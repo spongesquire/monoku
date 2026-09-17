@@ -3,3 +3,6 @@ node_modules/
 .DS_Store
 monoku_gold.png
 monoku_gold.jpg
+
+.vercel
+.env*

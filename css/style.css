@@ -6,8 +6,8 @@
   --ink: #23211c;
   --ink-2: #6f6a5e;
   --ink-3: #a5a094;
-  --grid-line: #d8d3c6;
-  --grid-strong: #23211c;
+  --grid-line: #ddd8cb;
+  --grid-strong: #3f3b30;
   --accent: #c2440d;
   --accent-soft: rgba(194, 68, 13, 0.08);
   --given: #23211c;
@@ -18,6 +18,9 @@
   --peer-soft: rgba(35, 33, 28, 0.045);
   --note: #8a8578;
   --sheet-bg: #fbfaf6;
+  --key: #ffffff;
+  --key-border: #e6e1d5;
+  --inset: #f0ede5;
   --radius: 14px;
   --shadow: 0 12px 40px rgba(35, 33, 28, 0.16);
   --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
@@ -29,22 +32,25 @@
 
 :root[data-theme="dark"] {
   --paper: #000000;
-  --paper-2: #161616;
-  --ink: #ece9e2;
-  --ink-2: #9b968a;
-  --ink-3: #5c5952;
-  --grid-line: #2a2a28;
+  --paper-2: #211f1b;
+  --ink: #f0ede6;
+  --ink-2: #aba599;
+  --ink-3: #807a6d;
+  --grid-line: #3d3a33;
   --grid-strong: #d8d3c6;
   --accent: #ff6a3d;
-  --accent-soft: rgba(255, 106, 61, 0.10);
-  --given: #ece9e2;
+  --accent-soft: rgba(255, 106, 61, 0.16);
+  --given: #f0ede6;
   --user: #64b7e8;
   --error: #ff6b5e;
-  --error-soft: rgba(255, 107, 94, 0.12);
-  --same-soft: rgba(255, 106, 61, 0.16);
-  --peer-soft: rgba(236, 233, 226, 0.05);
-  --note: #8a8578;
-  --sheet-bg: #161616;
+  --error-soft: rgba(255, 107, 94, 0.16);
+  --same-soft: rgba(255, 106, 61, 0.22);
+  --peer-soft: rgba(240, 237, 230, 0.08);
+  --note: #9d988b;
+  --sheet-bg: #1c1b18;
+  --key: #23221e;
+  --key-border: #3c3931;
+  --inset: #131211;
   --shadow: none;
 }
 
@@ -73,7 +79,10 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+  /* even vertical rhythm: leftover height becomes equal gaps between
+   * sections instead of pooling into one dead band */
+  justify-content: space-evenly;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 4px);
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
   transition: background 0.3s var(--ease-standard);
@@ -81,7 +90,6 @@ body {
 html.standalone .app { height: var(--app-h, 100vh); }
 
 /* push the pad toward the bottom edge (thumb zone) instead of leaving dead space */
-.spacer { flex: 1; min-height: 8px; }
 
 /* ---------- top bar ---------- */
 
@@ -129,19 +137,34 @@ html.standalone .app { height: var(--app-h, 100vh); }
 
 /* ---------- board ---------- */
 
-.board-wrap { position: relative; width: 100%; display: flex; justify-content: center; }
+/* board centers in the leftover vertical space — dead space splits
+ * evenly above/below instead of pooling in one hole */
+.board-wrap {
+  position: relative;
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 2px 0;
+}
 
 .board {
-  width: min(100vw - 24px, 100dvh - 305px, 520px);
+  width: min(100vw - 16px, 100dvh - 280px, 520px);
   aspect-ratio: 1;
   display: grid;
   grid-template-columns: repeat(9, minmax(0, 1fr));
   grid-template-rows: repeat(9, minmax(0, 1fr));
-  background: var(--paper);
+  /* board sits in a rounded card — absorbs leftover vertical space and
+   * gives the grid a deliberate object presence (reference-app look) */
+  background: var(--key);
+  border: 1.5px solid var(--key-border);
+  border-radius: 16px;
+  padding: 8px;
   position: relative;
 }
-html.standalone .board { width: min(100vw - 24px, var(--app-h, 100vh) - 305px, 520px); }
-@media (min-width: 560px) { .board { width: min(480px, calc(100dvh - 290px)); } }
+html.standalone .board { width: min(100vw - 16px, var(--app-h, 100vh) - 280px, 520px); }
+@media (min-width: 560px) { .board { width: min(480px, calc(100dvh - 260px)); } }
 
 .cell {
   position: relative;
@@ -162,7 +185,7 @@ html.standalone .board { width: min(100vw - 24px, var(--app-h, 100vh) - 305px, 5
 
 .cell .val {
   font-family: var(--font-digit);
-  font-size: clamp(20px, 7.2vmin, 34px);
+  font-size: clamp(22px, 7.6vmin, 36px);
   font-weight: 500;
   line-height: 1;
   color: var(--given);
@@ -255,68 +278,90 @@ html.standalone .board { width: min(100vw - 24px, var(--app-h, 100vh) - 305px, 5
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  padding: 18px 20px 6px;
+  padding: 8px 16px;
 }
 .tool-btn {
   flex: 1;
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  min-height: 44px;
-  border: none;
-  background: transparent;
+  gap: 4px;
+  min-height: 58px;
+  border: 1.5px solid var(--key-border);
+  background: var(--key);
   color: var(--ink-2);
   font-family: var(--font);
-  font-size: 13px; font-weight: 600;
-  border-radius: 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border-radius: 14px;
   cursor: pointer;
-  transition: color 0.15s var(--ease-standard), transform 0.1s var(--ease-out);
+  padding: 6px 4px;
+  transition: color 0.15s var(--ease-standard), transform 0.1s var(--ease-out), background 0.15s, border-color 0.15s;
 }
-.tool-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+.tool-btn svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 .tool-btn:active { transform: scale(0.94); }
-.tool-btn.on { color: var(--accent); }
+.tool-btn.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 
-/* ---------- number pad ---------- */
+/* ---------- number pad (Good Sudoku-style cards) ---------- */
 
+/* fixed-height card keys: digit + 3x3 dot grid, proportioned like the
+ * reference app (wider than tall region, no dead stretch) */
 .pad {
   width: 100%;
   max-width: 520px;
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: repeat(9, 1fr);
-  gap: 4px;
-  padding: 6px 12px calc(env(safe-area-inset-bottom, 0px) + 12px);
+  gap: 5px;
+  padding: 0 10px calc(env(safe-area-inset-bottom, 0px) + 12px);
 }
 @media (min-width: 560px) { .pad { max-width: 480px; } }
 
 .pad-key {
-  aspect-ratio: 1;
-  max-height: 64px;
-  border: none;
-  background: var(--paper-2);
+  border: 1.5px solid var(--key-border);
+  background: var(--key);
   color: var(--ink);
   font-family: var(--font-digit);
-  font-size: clamp(17px, 5.4vmin, 24px);
-  font-weight: 500;
-  border-radius: 10px;
+  border-radius: 12px;
   cursor: pointer;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  padding: 9px 2px 8px;
+  height: 92px;
   position: relative;
-  transition: background 0.15s var(--ease-standard), transform 0.1s var(--ease-out), opacity 0.15s;
+  transition: background 0.15s var(--ease-standard), transform 0.1s var(--ease-out), opacity 0.2s, border-color 0.15s, color 0.15s;
 }
 .pad-key:active { transform: scale(0.92); }
-.pad-key.done { opacity: 0.28; }
-.pad-key.hl { background: var(--accent-soft); color: var(--accent); }
-.pad-key .rem {
-  position: absolute;
-  bottom: 4px;
-  font-size: 10.5px;
+.pad-key.done { opacity: 0.25; }
+
+.pad-key .pk-num {
+  font-size: clamp(24px, 6.4vmin, 32px);
   font-weight: 600;
-  color: var(--ink-2);
-  font-family: var(--timer-font);
+  line-height: 1;
+  letter-spacing: -0.02em;
 }
+.pad-key.hl { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+
+/* 3x3 remaining grid — one slot per copy of the digit still to place */
+.pad-key .pk-dots {
+  display: grid;
+  grid-template-columns: repeat(3, 7px);
+  grid-auto-rows: 7px;
+  gap: 3px;
+}
+.pad-key .pk-dots i {
+  border-radius: 50%;
+  background: var(--ink-2);
+  opacity: 0.9;
+}
+.pad-key .pk-dots i.off { opacity: 0.22; }
+.pad-key.hl .pk-dots i { background: var(--accent); }
+.pad-key.done .pk-dots i { opacity: 0.22; }
 
 /* ---------- sheets ---------- */
 
@@ -527,7 +572,9 @@ input[type="range"]::-moz-range-thumb {
 
 /* desktop hover states */
 @media (hover: hover) {
-  .icon-btn:hover, .tool-btn:hover, .pad-key:hover { background: var(--paper-2); }
+  .icon-btn:hover { background: var(--paper-2); }
+  .tool-btn:hover { border-color: var(--ink-3); }
+  .pad-key:hover { border-color: var(--ink-3); }
   .menu-item:hover { background: var(--paper-2); }
   .diff-card:hover { border-color: var(--ink-3); }
   .btn-primary:hover { opacity: 0.9; }

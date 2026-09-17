@@ -193,16 +193,25 @@ function renderPad(counts) {
     const k = document.createElement('button');
     k.className = 'pad-key';
     k.dataset.d = d;
-    k.textContent = d;
-    if (selDigit === d) k.classList.add('hl');
-    if (counts[d] >= 9) {
-      k.classList.add('done');
-    } else {
-      const rem = document.createElement('span');
-      rem.className = 'rem';
-      rem.textContent = String(9 - counts[d]);
-      k.appendChild(rem);
+    k.setAttribute('aria-label', `Digit ${d}, ${9 - counts[d]} remaining`);
+    const num = document.createElement('span');
+    num.className = 'pk-num';
+    num.textContent = d;
+    k.appendChild(num);
+    /* 3x3 remaining grid: one dot per copy still to place — full grid
+     * when none placed, empties as the digit fills in, done when 9/9 */
+    const dots = document.createElement('span');
+    dots.className = 'pk-dots';
+    dots.setAttribute('aria-hidden', 'true');
+    const remaining = 9 - counts[d];
+    for (let s = 0; s < 9; s++) {
+      const dot = document.createElement('i');
+      if (s >= remaining) dot.className = 'off';
+      dots.appendChild(dot);
     }
+    k.appendChild(dots);
+    if (selDigit === d) k.classList.add('hl');
+    if (counts[d] >= 9) k.classList.add('done');
     k.addEventListener('click', () => onPad(d));
     pad.appendChild(k);
   }
