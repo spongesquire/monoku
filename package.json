@@ -1,0 +1,10 @@
+{
+  "name": "monoku",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Monoku — offline-first Sudoku for Mon. Logic difficulty, teaching hints.",
+  "scripts": {
+    "test": "node --test tests/engine.test.js"
+  }
+}

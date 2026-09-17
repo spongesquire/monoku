@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Monoku</title>
+<meta name="description" content="Monoku — a calm, offline-first Sudoku for Mon. Real logic difficulty, teaching hints, paper-and-ink design.">
+<meta name="theme-color" content="#f6f4ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Monoku">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192">
+<script>
+/* theme + standalone detection before first paint (no FOUC, iOS standalone vh fix) */
+(function () {
+  try {
+    var t = localStorage.getItem('ps_theme');
+    var dark = t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches);
+    if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+    if (matchMedia('(display-mode: standalone)').matches || navigator.standalone)
+      document.documentElement.classList.add('standalone');
+  } catch (e) {}
+})();
+</script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app" id="app">
+
+  <header class="topbar">
+    <button class="icon-btn" id="btnMenu" aria-label="Menu" aria-haspopup="true">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+    </button>
+    <div class="topbar-mid">
+      <span class="diff-label" id="diffLabel">Easy</span>
+      <span class="diff-se" id="diffSe" hidden></span>
+    </div>
+    <div class="topbar-right">
+      <span class="mistakes" id="mistakes" hidden aria-label="Mistakes"></span>
+      <span class="timer" id="timer" role="timer" aria-label="Elapsed time">0:00</span>
+    </div>
+  </header>
+
+  <main class="board-wrap" id="boardWrap">
+    <div class="board" id="board" role="grid" aria-label="Sudoku board"></div>
+    <div class="pause-veil" id="pauseVeil" hidden>
+      <button class="resume-btn" id="btnResume">Paused — tap to resume</button>
+    </div>
+  </main>
+
+  <div class="spacer"></div>
+  <nav class="tools" aria-label="Tools">
+    <button class="tool-btn" id="btnUndo" aria-label="Undo">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>
+      <span>Undo</span>
+    </button>
+    <button class="tool-btn" id="btnErase" aria-label="Erase">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4.4 4.4a2 2 0 0 1 0 2.8L12 19.6a2 2 0 0 1-2.8 0L4.4 14.8a2 2 0 0 1 0-2.8L11 5.4a2 2 0 0 1 2.8 0Z"/><path d="m8 12 4 4"/></svg>
+      <span>Erase</span>
+    </button>
+    <button class="tool-btn" id="btnNotes" aria-label="Pencil notes mode" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16.5 3.5 4 4L8 20l-5 1 1-5Z"/></svg>
+      <span>Notes</span>
+    </button>
+    <button class="tool-btn" id="btnHint" aria-label="Hint">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.5 1.1 1.3 1.1 2.2h5c0-.9.4-1.7 1.1-2.2A6 6 0 0 0 12 3Z"/></svg>
+      <span>Hint</span>
+    </button>
+  </nav>
+
+  <div class="pad" id="pad" aria-label="Number pad"></div>
+</div>
+
+<!-- Difficulty / new game sheet -->
+<div class="sheet-overlay" id="sheetNew" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="newTitle">
+    <h2 id="newTitle" class="sheet-title">New puzzle</h2>
+    <div class="diff-cards" id="diffCards">
+      <button class="diff-card" data-diff="easy">
+        <span class="dc-name">Easy</span>
+        <span class="dc-desc">Singles only — a warm-up</span>
+        <span class="dc-stat" data-stat="easy"></span>
+      </button>
+      <button class="diff-card" data-diff="medium">
+        <span class="dc-name">Medium</span>
+        <span class="dc-desc">Hidden singles, gentle deductions</span>
+        <span class="dc-stat" data-stat="medium"></span>
+      </button>
+      <button class="diff-card" data-diff="hard">
+        <span class="dc-name">Hard</span>
+        <span class="dc-desc">Pairs, fish, and wings</span>
+        <span class="dc-stat" data-stat="hard"></span>
+      </button>
+      <button class="diff-card" data-diff="diabolical">
+        <span class="dc-name">Diabolical</span>
+        <span class="dc-desc">The deep end — chains or worse</span>
+        <span class="dc-stat" data-stat="diabolical"></span>
+      </button>
+    </div>
+
+    <div class="adv-toggle">
+      <button class="adv-btn" id="btnAdvanced" aria-expanded="false" aria-controls="advPanel">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h6" /><circle cx="18" cy="15" r="3"/></svg>
+        Fine-tune difficulty
+      </button>
+    </div>
+    <div class="adv-panel" id="advPanel" hidden>
+      <div class="adv-readout">
+        <span class="adv-band" id="advBand">Easy</span>
+        <span class="adv-se" id="advSe">SE 1.0</span>
+      </div>
+      <input type="range" id="advSlider" min="0" max="100" step="1" value="8" aria-label="Difficulty">
+      <div class="adv-scale"><span>Gentler</span><span>Harder</span></div>
+    </div>
+
+    <div class="sheet-actions">
+      <button class="btn-ghost" id="btnNewCancel">Cancel</button>
+      <button class="btn-primary" id="btnNewStart" disabled>Generate…</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hint sheet -->
+<div class="sheet-overlay" id="sheetHint" hidden>
+  <div class="sheet sheet-hint" role="dialog" aria-modal="true" aria-labelledby="hintTitle">
+    <span class="hint-kicker" id="hintKicker">Hint</span>
+    <h2 class="sheet-title" id="hintTitle">Hidden Single</h2>
+    <p class="hint-where" id="hintWhere"></p>
+    <p class="hint-what" id="hintWhat"></p>
+    <p class="hint-why" id="hintWhy"></p>
+    <div class="sheet-actions">
+      <button class="btn-ghost" id="btnHintClose">Close</button>
+      <button class="btn-primary" id="btnHintNext">Show me where</button>
+    </div>
+  </div>
+</div>
+
+<!-- Win sheet -->
+<div class="sheet-overlay" id="sheetWin" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="winTitle">
+    <div class="win-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg>
+    </div>
+    <h2 class="sheet-title" id="winTitle">Solved</h2>
+    <dl class="win-stats">
+      <div><dt>Time</dt><dd id="winTime">—</dd></div>
+      <div><dt>Difficulty</dt><dd id="winDiff">—</dd></div>
+      <div><dt>Mistakes</dt><dd id="winMistakes">—</dd></div>
+      <div><dt>Hints</dt><dd id="winHints">—</dd></div>
+    </dl>
+    <p class="win-best" id="winBest"></p>
+    <div class="sheet-actions">
+      <button class="btn-ghost" id="btnWinClose">Admire the board</button>
+      <button class="btn-primary" id="btnWinNew">New puzzle</button>
+    </div>
+  </div>
+</div>
+
+<!-- Menu sheet -->
+<div class="sheet-overlay" id="sheetMenu" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="menuTitle">
+    <h2 class="sheet-title" id="menuTitle">Monoku</h2>
+    <div class="menu-list">
+      <button class="menu-item" id="miResume">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 4 12 8-12 8Z"/></svg> Resume
+      </button>
+      <button class="menu-item" id="miNew">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> New puzzle
+      </button>
+    </div>
+    <h3 class="menu-heading">Settings</h3>
+    <div class="menu-list">
+      <button class="menu-item menu-select" id="miTheme" aria-label="Theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z"/></svg>
+        <span>Theme</span><span class="mi-val" id="themeVal">Auto</span>
+      </button>
+      <button class="menu-item menu-select" id="miCleanup" aria-label="Note cleanup">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M6 12h12M9 17h6"/></svg>
+        <span>Clean notes on placement</span><span class="mi-val" id="cleanupVal">On</span>
+      </button>
+      <button class="menu-item menu-select" id="miAdvance" aria-label="Auto advance">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h14m-5-6 6 6-6 6"/></svg>
+        <span>Move on after placing</span><span class="mi-val" id="advanceVal">On</span>
+      </button>
+    </div>
+    <h3 class="menu-heading">Gestures</h3>
+    <ul class="gesture-list">
+      <li><b>Tap</b> a cell, then a number to place it</li>
+      <li><b>Notes</b> mode writes small guesses</li>
+      <li><b>Double-tap</b> a cell with one note to commit it</li>
+      <li><b>Double-tap</b> any small note to commit that digit</li>
+      <li><b>Keyboard</b> — arrows move, 1–9 place, N notes, U undo</li>
+    </ul>
+    <div class="sheet-actions">
+      <button class="btn-primary" id="btnMenuClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
