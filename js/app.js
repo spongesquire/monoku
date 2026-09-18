@@ -189,6 +189,13 @@ function isPeer(i, j) {
 function renderPad(counts) {
   const pad = $('pad');
   pad.innerHTML = '';
+  /* per-box presence: dots double as a board map — slot b lights up when
+   * digit d is present in box b (mirrors the 3x3 box layout on the board) */
+  const boxHas = Array.from({ length: 10 }, () => new Array(9).fill(false));
+  for (let i = 0; i < 81; i++) {
+    const v = board[i];
+    if (v) boxHas[v][BOX_OF[i]] = true;
+  }
   for (let d = 1; d <= 9; d++) {
     const k = document.createElement('button');
     k.className = 'pad-key';
@@ -198,15 +205,14 @@ function renderPad(counts) {
     num.className = 'pk-num';
     num.textContent = d;
     k.appendChild(num);
-    /* 3x3 remaining grid: one dot per copy still to place — full grid
-     * when none placed, empties as the digit fills in, done when 9/9 */
+    /* 3x3 mini-map of the board's boxes: lit dot = digit present in that
+     * box, faint = still needed there. Shows WHERE, not just how many */
     const dots = document.createElement('span');
     dots.className = 'pk-dots';
     dots.setAttribute('aria-hidden', 'true');
-    const remaining = 9 - counts[d];
-    for (let s = 0; s < 9; s++) {
+    for (let b = 0; b < 9; b++) {
       const dot = document.createElement('i');
-      if (s >= remaining) dot.className = 'off';
+      if (!boxHas[d][b]) dot.className = 'off';
       dots.appendChild(dot);
     }
     k.appendChild(dots);
