@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Monoku</title>
 <meta name="description" content="Monoku — a calm, offline-first Sudoku for Mon. Real logic difficulty, teaching hints, paper-and-ink design.">
 <meta name="theme-color" content="#f6f4ef" media="(prefers-color-scheme: light)">
@@ -15,12 +15,15 @@
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" href="icons/icon-192.png" sizes="192x192">
 <script>
-/* theme + standalone detection before first paint (no FOUC, iOS standalone vh fix) */
+/* theme + standalone detection before first paint (no FOUC).
+ * Reads the app's REAL settings key (monoku_settings_v1 JSON). Only
+ * manual overrides set data-theme; auto mode is handled purely by the
+ * prefers-color-scheme CSS so it follows the OS with zero flicker. */
 (function () {
   try {
-    var t = localStorage.getItem('ps_theme');
-    var dark = t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches);
-    if (dark) document.documentElement.setAttribute('data-theme', 'dark');
+    var s = JSON.parse(localStorage.getItem('monoku_settings_v1') || '{}');
+    if (s.theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    else if (s.theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
     if (matchMedia('(display-mode: standalone)').matches || navigator.standalone)
       document.documentElement.classList.add('standalone');
   } catch (e) {}

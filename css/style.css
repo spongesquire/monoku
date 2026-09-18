@@ -46,12 +46,41 @@
   --error-soft: rgba(255, 107, 94, 0.16);
   --same-soft: rgba(255, 106, 61, 0.22);
   --peer-soft: rgba(240, 237, 230, 0.08);
-  --note: #9d988b;
+  --note: #b8b2a4;
   --sheet-bg: #1c1b18;
   --key: #23221e;
   --key-border: #3c3931;
   --inset: #131211;
   --shadow: none;
+}
+
+/* AUTO mode: follow the OS with zero JS. data-theme="light"/"dark" still
+ * win when the user picks manually (both selectors share specificity,
+ * source order puts the manual override last). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #000000;
+    --paper-2: #211f1b;
+    --ink: #f0ede6;
+    --ink-2: #aba599;
+    --ink-3: #807a6d;
+    --grid-line: #3d3a33;
+    --grid-strong: #d8d3c6;
+    --accent: #ff6a3d;
+    --accent-soft: rgba(255, 106, 61, 0.16);
+    --given: #f0ede6;
+    --user: #64b7e8;
+    --error: #ff6b5e;
+    --error-soft: rgba(255, 107, 94, 0.16);
+    --same-soft: rgba(255, 106, 61, 0.22);
+    --peer-soft: rgba(240, 237, 230, 0.08);
+    --note: #b8b2a4;
+    --sheet-bg: #1c1b18;
+    --key: #23221e;
+    --key-border: #3c3931;
+    --inset: #131211;
+    --shadow: none;
+  }
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -69,8 +98,12 @@ body {
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
+  touch-action: manipulation; /* kills double-tap zoom; pan-x/pan-y below kills pinch */
+  touch-action: pan-x pan-y;
   overflow: hidden;
+  position: fixed;
+  inset: 0;
+  width: 100%;
 }
 
 .app {
@@ -268,7 +301,7 @@ html.standalone .board { width: min(100vw - 16px, var(--app-h, 100vh) - 280px, 5
   width: 100%; height: 100%;
   font-size: clamp(9px, 2.6vmin, 13px);
   line-height: 1;
-  color: var(--ink-3);
+  color: var(--note);
   font-weight: 500;
   pointer-events: none;
 }

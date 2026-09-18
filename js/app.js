@@ -90,6 +90,11 @@ function save() {
 
 /* flush before iOS kills the tab — pagehide is the reliable last event */
 window.addEventListener('pagehide', save);
+/* block pinch-zoom + ctrl-wheel zoom (iOS Safari ignores user-scalable) */
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+document.addEventListener('gesturechange', (e) => e.preventDefault());
+document.addEventListener('dblclick', (e) => e.preventDefault());
+window.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) save();
   else if (!$('pauseVeil').hidden && !sheetOpen()) resumeGame();
