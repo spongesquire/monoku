@@ -333,7 +333,14 @@ function place(i, d) {
     entry.scrubbed = { d, cells: cleanupNotes(i, d) };
     selected = settings.advance ? findNextEmpty(i) : i;
   }
-  selDigit = 0;
+  /* rapid sequential entry: keep the armed digit armed after placing so
+   * the user can tap cell after cell. Auto-disarm only when all 9 copies
+   * of the digit are down (nothing left to place). */
+  if (selDigit) {
+    let n = 0;
+    for (let k = 0; k < 81; k++) if (board[k] === selDigit) n++;
+    if (n >= 9) selDigit = 0;
+  }
   checkWin();
   render();
   save(); /* progress persisted on every single move */

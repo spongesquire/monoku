@@ -420,13 +420,17 @@ html.standalone .board { width: min(100vw - 16px, var(--app-h, 100vh) - 280px, 5
 
 /* ---------- tools row ---------- */
 
+/* tools row ADAPTS to the space between board and pad: height scales with
+ * viewport (tall screens = comfortable 64px, tight screens = compact 46px)
+ * so the number cards always keep their full size and nothing overflows */
 .tools {
   width: 100%;
   max-width: 520px;
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 16px;
+  padding: 4px 16px;
+  height: clamp(52px, 7dvh, 64px);
 }
 .tool-btn {
   flex: 1;
@@ -434,21 +438,22 @@ html.standalone .board { width: min(100vw - 16px, var(--app-h, 100vh) - 280px, 5
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  min-height: 58px;
+  gap: 3px;
+  height: 100%;
+  min-height: 0;
   border: 1.5px solid var(--key-border);
   background: var(--key);
   color: var(--ink-2);
   font-family: var(--font);
-  font-size: 11.5px;
+  font-size: clamp(10px, 1.5dvh, 11.5px);
   font-weight: 600;
   letter-spacing: 0.01em;
   border-radius: 14px;
   cursor: pointer;
-  padding: 6px 4px;
+  padding: 3px 4px;
   transition: color 0.15s var(--ease-standard), transform 0.1s var(--ease-out), background 0.15s, border-color 0.15s;
 }
-.tool-btn svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+.tool-btn svg { width: clamp(18px, 2.8dvh, 22px); height: clamp(18px, 2.8dvh, 22px); fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 .tool-btn:active { transform: scale(0.94); }
 .tool-btn.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 
