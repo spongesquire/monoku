@@ -94,6 +94,7 @@ html.standalone .app { height: var(--app-h, 100vh); }
 /* ---------- top bar ---------- */
 
 .topbar {
+  position: relative;
   width: 100%;
   max-width: 520px;
   display: flex;
@@ -115,7 +116,18 @@ html.standalone .app { height: var(--app-h, 100vh); }
 .icon-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 .icon-btn:active { background: var(--paper-2); transform: scale(0.94); }
 
-.topbar-mid { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; }
+.topbar-mid {
+  /* absolutely centered on the bar — never shifts when the mistakes
+   * counter appears/disappears on the right */
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  pointer-events: none;
+}
 .brand {
   font-family: var(--font-digit);
   font-size: 16px;
@@ -350,23 +362,39 @@ html.standalone .board { width: min(100vw - 16px, var(--app-h, 100vh) - 280px, 5
   transition: background 0.15s var(--ease-standard), transform 0.1s var(--ease-out), opacity 0.2s, border-color 0.15s, color 0.15s;
 }
 
-/* tall phones (modern iPhones+): two rows of bigger cards, 5 over 4,
- * second row centered — much easier targets. Short phones and wide
- * screens keep the single row of nine. */
+/* tall phones (modern iPhones+): two rows of five — digits 1-5 on top,
+ * 6-9 plus the Notes card below, perfectly symmetric 5+5. Short phones
+ * and wide screens keep the single row of nine (Notes stays in tools). */
 @media (max-width: 700px) and (min-height: 780px) {
   .pad { grid-template-columns: repeat(5, 1fr); gap: 7px; }
   .pad .pad-key { height: 98px; }
-  .pad .pad-key[data-d="6"] { grid-column: 2; }
-  .pad .pad-key[data-d="7"] { grid-column: 3; }
-  .pad .pad-key[data-d="8"] { grid-column: 4; }
-  .pad .pad-key[data-d="9"] { grid-column: 5; }
+  .pad .pad-key[data-d="6"] { grid-column: 1; }
+  .pad .pad-key[data-d="7"] { grid-column: 2; }
+  .pad .pad-key[data-d="8"] { grid-column: 3; }
+  .pad .pad-key[data-d="9"] { grid-column: 4; }
   .pad-key .pk-num { font-size: clamp(26px, 7.2vw, 40px); }
   .pad-key .pk-dots {
     grid-template-columns: repeat(3, 8px);
     grid-auto-rows: 8px;
     gap: 3.5px;
   }
+  /* tools row drops Notes here — it lives in the pad's bottom-right slot */
+  .tools .tool-btn-notes { display: none; }
 }
+
+/* Notes card inside the pad (tall phones): same card anatomy as digits.
+   Hidden on single-row layouts where the tools-row Notes is used. */
+.pad-key.pk-notes { display: none; }
+@media (max-width: 700px) and (min-height: 780px) {
+  .pad-key.pk-notes { display: flex; grid-column: 5; grid-row: 2; }
+  .pad-key.pk-notes svg {
+    width: 26px; height: 26px;
+    fill: none; stroke: currentColor; stroke-width: 1.8;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .pad-key.pk-notes .pk-num { font-size: 12px; font-weight: 600; letter-spacing: 0.02em; font-family: var(--font); }
+}
+.pad-key.pk-notes.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .pad-key:active { transform: scale(0.92); }
 .pad-key.done { opacity: 0.25; }
 

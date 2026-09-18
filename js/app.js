@@ -221,6 +221,16 @@ function renderPad(counts) {
     k.addEventListener('click', () => onPad(d));
     pad.appendChild(k);
   }
+  /* Notes card occupies the pad's 10th slot (bottom-right on tall phones,
+   * giving symmetric 5+5 rows; hidden by CSS on single-row layouts) */
+  const nk = document.createElement('button');
+  nk.className = 'pad-key pk-notes';
+  nk.id = 'padNotes';
+  nk.setAttribute('aria-label', 'Pencil notes mode');
+  nk.setAttribute('aria-pressed', String(notesMode));
+  nk.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16.5 3.5 4 4L8 20l-5 1 1-5Z"/></svg><span class="pk-num">Notes</span>';
+  if (notesMode) nk.classList.add('on');
+  pad.appendChild(nk);
 }
 
 /* ---------- selection & input ---------- */
@@ -561,8 +571,11 @@ function applyPuzzle(result) {
   selected = -1;
   selDigit = 0;
   notesMode = false;
-  $('btnNotes').setAttribute('aria-pressed', 'false');
-  $('btnNotes').classList.remove('on');
+  for (const b of [$('btnNotes'), document.getElementById('padNotes')]) {
+    if (!b) continue;
+    b.setAttribute('aria-pressed', 'false');
+    b.classList.remove('on');
+  }
   mistakes = 0;
   hintsUsed = 0;
   elapsed = 0;
@@ -642,11 +655,21 @@ function wire() {
 
   $('btnUndo').addEventListener('click', undo);
   $('btnErase').addEventListener('click', () => erase(selected));
-  $('btnNotes').addEventListener('click', () => {
+  const syncNotesButtons = () => {
+    for (const b of [$('btnNotes'), $('padNotes')]) {
+      if (!b) continue;
+      b.setAttribute('aria-pressed', String(notesMode));
+      b.classList.toggle('on', notesMode);
+    }
+  };
+  const toggleNotes = () => {
     notesMode = !notesMode;
-    $('btnNotes').setAttribute('aria-pressed', String(notesMode));
-    $('btnNotes').classList.toggle('on', notesMode);
+    syncNotesButtons();
     vibrate(4);
+  };
+  $('btnNotes').addEventListener('click', toggleNotes);
+  pad.addEventListener('click', (e) => {
+    if (e.target.closest('.pk-notes')) toggleNotes();
   });
   $('btnHint').addEventListener('click', requestHint);
   $('btnMenu').addEventListener('click', openMenu);
