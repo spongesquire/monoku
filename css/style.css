@@ -1,6 +1,9 @@
 /* Monoku — paper & ink design system */
 
 :root {
+  /* UA form controls (buttons, inputs) follow the declared scheme —
+   * without this, WebKit paints them light even in dark theme */
+  color-scheme: light;
   --paper: #f6f4ef;
   --paper-2: #efece4;
   --ink: #23211c;
@@ -31,6 +34,7 @@
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --paper: #000000;
   --paper-2: #211f1b;
   --ink: #f0ede6;
@@ -59,6 +63,7 @@
  * source order puts the manual override last). */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --paper: #000000;
     --paper-2: #211f1b;
     --ink: #f0ede6;
@@ -84,6 +89,13 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* no UA form-control painting anywhere — theme is fully explicit */
+button, input {
+  background: none;
+  color: inherit;
+  font: inherit;
+}
 
 html { -webkit-text-size-adjust: 100%; }
 
@@ -275,6 +287,11 @@ html.standalone .board { width: min(100vw - 16px, var(--app-h, 100vh) - 280px, 5
   grid-template-areas: "stack";
   border-right: 1px solid var(--grid-line);
   border-bottom: 1px solid var(--grid-line);
+  /* CRITICAL: buttons default to UA buttonface (light!) unless overridden —
+   * without this, dark mode renders white cells with cream digits */
+  background: transparent;
+  color: inherit;
+  font: inherit;
   cursor: pointer;
 }
 .cell > * { grid-area: stack; }
