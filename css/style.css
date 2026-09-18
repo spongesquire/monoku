@@ -151,8 +151,50 @@ html.standalone .app { height: var(--app-h, 100vh); }
   white-space: nowrap;
 }
 
-.topbar-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.topbar-right {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
 .mistakes { font-size: 12px; font-weight: 600; color: var(--error); letter-spacing: 0.02em; }
+
+/* mistakes badge: announces fully ("3 mistakes"), then collapses to a
+ * compact chip (icon + count) after 1.6s to keep the bar clean */
+.mistakes-wrap {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  max-width: 0;
+  opacity: 0;
+  transition: max-width 0.45s var(--ease-out), opacity 0.3s var(--ease-standard);
+}
+.mistakes-wrap.show { max-width: 200px; opacity: 1; }
+.mistakes-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--error-soft);
+  color: var(--error);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mistakes-badge svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+.mistakes-badge .m-text { transition: opacity 0.25s var(--ease-standard), max-width 0.3s var(--ease-out); max-width: 120px; opacity: 1; }
+.mistakes-wrap.collapsed .m-text { max-width: 0; opacity: 0; }
+.mistakes-badge.pop { animation: badgePop 0.35s var(--ease-out); }
+@keyframes badgePop {
+  0% { transform: scale(0.7); opacity: 0; }
+  65% { transform: scale(1.08); }
+  100% { transform: scale(1); opacity: 1; }
+}
 .timer {
   font-family: var(--timer-font);
   font-size: 15px; font-weight: 500;
@@ -278,6 +320,34 @@ html.standalone .board { width: min(100vw - 16px, var(--app-h, 100vh) - 280px, 5
   50% { background: var(--same-soft); }
 }
 
+/* ---------- celebrate / motion layer ---------- */
+
+/* confetti canvas sits above the board, never blocks input */
+#fx { position: fixed; inset: 0; pointer-events: none; z-index: 60; }
+
+/* new puzzle: cells cascade in from faint */
+.board.deal .cell { animation: cellDeal 0.5s var(--ease-out) both; }
+@keyframes cellDeal {
+  from { opacity: 0; transform: scale(0.86); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* recompute: notes shimmer in, staggered by box then cell */
+.notes-grid .n.rain { animation: noteRain 0.42s var(--ease-out) both; }
+@keyframes noteRain {
+  0% { opacity: 0; transform: scale(0.3); }
+  70% { transform: scale(1.15); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* win: clean-solve golden wash rides the existing wave */
+.cell.gold { animation: goldWave 0.9s var(--ease-out) both; }
+@keyframes goldWave {
+  0% { background: var(--paper); }
+  45% { background: rgba(255, 196, 0, 0.30); }
+  100% { background: var(--paper); }
+}
+
 /* ---------- pause veil ---------- */
 
 .pause-veil {
@@ -382,17 +452,32 @@ html.standalone .board { width: min(100vw - 16px, var(--app-h, 100vh) - 280px, 5
   .tools .tool-btn-notes { display: none; }
 }
 
-/* Notes card inside the pad (tall phones): same card anatomy as digits.
-   Hidden on single-row layouts where the tools-row Notes is used. */
+/* Notes card inside the pad (tall phones): same card anatomy as digits —
+   big glyph centered, label pinned at the bottom. Hidden on single-row
+   layouts where the tools-row Notes is used. */
 .pad-key.pk-notes { display: none; }
 @media (max-width: 700px) and (min-height: 780px) {
-  .pad-key.pk-notes { display: flex; grid-column: 5; grid-row: 2; }
-  .pad-key.pk-notes svg {
-    width: 26px; height: 26px;
-    fill: none; stroke: currentColor; stroke-width: 1.8;
-    stroke-linecap: round; stroke-linejoin: round;
+  .pad-key.pk-notes {
+    display: flex;
+    grid-column: 5;
+    grid-row: 2;
+    justify-content: center;
   }
-  .pad-key.pk-notes .pk-num { font-size: 12px; font-weight: 600; letter-spacing: 0.02em; font-family: var(--font); }
+  .pad-key.pk-notes svg {
+    width: 34px; height: 34px;
+    fill: none; stroke: currentColor; stroke-width: 1.6;
+    stroke-linecap: round; stroke-linejoin: round;
+    margin-top: 8px;
+    flex-shrink: 0;
+    transition: transform 0.25s var(--ease-out);
+  }
+  .pad-key.pk-notes .pk-num {
+    font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
+    font-family: var(--font);
+    margin-top: auto;
+    margin-bottom: 2px;
+  }
+  .pad-key.pk-notes.on svg { transform: rotate(-12deg) scale(1.12); }
 }
 .pad-key.pk-notes.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .pad-key:active { transform: scale(0.92); }

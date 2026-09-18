@@ -43,6 +43,13 @@
       </span>
     </div>
     <div class="topbar-right">
+      <span class="mistakes-wrap" id="mistakesWrap" hidden>
+        <span class="mistakes-badge" id="mistakesBadge">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <span id="mistakesCount">0</span>
+          <span class="m-text" id="mistakesText">mistakes</span>
+        </span>
+      </span>
       <span class="mistakes" id="mistakes" hidden aria-label="Mistakes"></span>
       <span class="timer" id="timer" role="timer" aria-label="Elapsed time">0:00</span>
     </div>
@@ -188,6 +195,10 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h14m-5-6 6 6-6 6"/></svg>
         <span>Move on after placing</span><span class="mi-val" id="advanceVal">On</span>
       </button>
+      <button class="menu-item" id="miRecompute">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>
+        <span>Recompute notes</span><span class="mi-val">Fill all candidates</span>
+      </button>
     </div>
     <h3 class="menu-heading">Gestures</h3>
     <ul class="gesture-list">
@@ -203,6 +214,7 @@
   </div>
 </div>
 
+<canvas id="fx" aria-hidden="true"></canvas>
 <script type="module" src="js/app.js"></script>
 </body>
 </html>

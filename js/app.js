@@ -177,9 +177,40 @@ function render() {
     }
   }
   renderPad(counts);
-  const m = $('mistakes');
-  m.hidden = mistakes === 0;
-  m.textContent = mistakes === 1 ? '1 mistake' : `${mistakes} mistakes`;
+  renderMistakes();
+}
+
+/* mistakes badge: pops in fully labelled on the first mistake, then
+ * collapses to icon+count. Re-expands briefly whenever the count rises. */
+let mistakesShown = 0;
+let mistakesCollapseTimer = null;
+function renderMistakes() {
+  const wrap = $('mistakesWrap');
+  const badge = $('mistakesBadge');
+  if (mistakes === 0) {
+    wrap.hidden = true;
+    wrap.classList.remove('show', 'collapsed');
+    mistakesShown = 0;
+    return;
+  }
+  if (wrap.hidden) {
+    wrap.hidden = false;
+    requestAnimationFrame(() => wrap.classList.add('show'));
+  } else if (!wrap.classList.contains('show')) {
+    wrap.classList.add('show');
+  }
+  $('mistakesCount').textContent = String(mistakes);
+  $('mistakesText').textContent = mistakes === 1 ? 'mistake' : 'mistakes';
+  if (mistakes > mistakesShown) {
+    /* fresh mistake: expand, pop, then settle to the compact chip */
+    wrap.classList.remove('collapsed');
+    badge.classList.remove('pop');
+    void badge.offsetWidth; /* restart animation */
+    badge.classList.add('pop');
+    clearTimeout(mistakesCollapseTimer);
+    mistakesCollapseTimer = setTimeout(() => wrap.classList.add('collapsed'), 1600);
+  }
+  mistakesShown = mistakes;
 }
 
 function isPeer(i, j) {
@@ -356,9 +387,14 @@ function pushHistory(i) {
 function undo() {
   const h = history.pop();
   if (!h) return;
-  board[h.i] = h.val;
-  notes[h.i] = new Set(h.notes);
-  selected = h.i;
+  if (h.multi) {
+    notes = h.multi.map(a => new Set(a));
+    selected = -1;
+  } else {
+    board[h.i] = h.val;
+    notes[h.i] = new Set(h.notes);
+    selected = h.i;
+  }
   render();
   save();
 }
@@ -458,6 +494,114 @@ function applyHint(step) {
   save();
 }
 
+
+/* ---------- recompute: fill every empty cell with all candidates ---------- */
+function recomputeNotes() {
+  if (won) return;
+  pushHistoryMulti();
+  let filledCells = 0;
+  const rainCells = [];
+  for (let i = 0; i < 81; i++) {
+    if (board[i] || given[i]) continue;
+    const cand = candidatesFor(i);
+    if (!cand.size) continue;
+    notes[i] = cand;
+    filledCells++;
+    rainCells.push(i);
+  }
+  render();
+  /* staggered shimmer: sweep across boxes left-to-right, top-to-bottom */
+  for (const i of rainCells) {
+    const delay = (ROW_OF[i] * 9 + COL_OF[i]) * 6;
+    for (const n of cells[i].querySelectorAll('.n.on')) {
+      const el = n;
+      setTimeout(() => {
+        el.classList.add('rain');
+        el.addEventListener('animationend', () => el.classList.remove('rain'), { once: true });
+      }, delay);
+    }
+  }
+  vibrate([6, 30, 6]);
+  save();
+}
+
+function candidatesFor(i) {
+  const used = new Set();
+  for (const j of PEERS[i]) if (board[j]) used.add(board[j]);
+  const s = new Set();
+  for (let d = 1; d <= 9; d++) if (!used.has(d)) s.add(d);
+  return s;
+}
+
+/* history entry that restores ALL notes at once (coarse but honest undo) */
+function pushHistoryMulti() {
+  history.push({ i: -1, val: 0, notes: null, multi: notes.map(s => [...s]) });
+}
+
+
+/* ---------- fx: confetti + celebrations (canvas, non-blocking) ---------- */
+const fxCanvas = $('fx');
+const fx = fxCanvas.getContext('2d');
+let fxParts = [];
+let fxRunning = false;
+
+function fxResize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  fxCanvas.width = innerWidth * dpr;
+  fxCanvas.height = innerHeight * dpr;
+  fxCanvas.style.width = innerWidth + 'px';
+  fxCanvas.style.height = innerHeight + 'px';
+  fx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', fxResize);
+fxResize();
+
+function fxTick() {
+  if (!fxParts.length) { fxRunning = false; fx.clearRect(0, 0, innerWidth, innerHeight); return; }
+  fxRunning = true;
+  fx.clearRect(0, 0, innerWidth, innerHeight);
+  const favg = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1;
+  for (const p of fxParts) {
+    p.vy += 0.12 * favg;
+    p.x += p.vx;
+    p.y += p.vy;
+    p.rot += p.vr;
+    p.life--;
+    fx.save();
+    fx.translate(p.x, p.y);
+    fx.rotate(p.rot);
+    fx.fillStyle = p.color;
+    fx.globalAlpha = Math.max(0, Math.min(1, p.life / 40));
+    fx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+    fx.restore();
+  }
+  fxParts = fxParts.filter(p => p.life > 0 && p.y < innerHeight + 30);
+  requestAnimationFrame(fxTick);
+}
+
+const PALETTE_CLEAN = ['#f2b705', '#ffd966', '#fff3b0', '#e8a87c', '#ffffff'];
+const PALETTE_WIN   = ['#ff6a3d', '#64b7e8', '#9d8df1', '#5fbf77', '#ffd966'];
+
+function confetti(count, palette) {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const rect = document.querySelector('.board').getBoundingClientRect();
+  for (let i = 0; i < count; i++) {
+    fxParts.push({
+      x: rect.left + Math.random() * rect.width,
+      y: rect.top + rect.height * (0.15 + Math.random() * 0.5),
+      vx: (Math.random() - 0.5) * 3.2,
+      vy: -(1.5 + Math.random() * 3.5),
+      vr: (Math.random() - 0.5) * 0.25,
+      rot: Math.random() * Math.PI,
+      w: 5 + Math.random() * 5,
+      h: 8 + Math.random() * 7,
+      life: 130 + Math.random() * 70,
+      color: palette[Math.floor(Math.random() * palette.length)],
+    });
+  }
+  if (!fxRunning) requestAnimationFrame(fxTick);
+}
+
 /* ---------- win ---------- */
 function checkWin() {
   for (let i = 0; i < 81; i++) if (board[i] !== solution[i]) return;
@@ -482,7 +626,23 @@ function checkWin() {
   cells.forEach((c, i) => {
     setTimeout(() => c.classList.add('wave'), (ROW_OF[i] + COL_OF[i]) * 55);
   });
-  vibrate([10, 60, 10, 60, 30]);
+  /* dual celebration: flawless solve gets the golden cascade, a solve
+   * with mistakes or hints gets the friendly multi-color party */
+  const flawless = mistakes === 0 && hintsUsed === 0;
+  if (flawless) {
+    cells.forEach((c, i) => {
+      setTimeout(() => {
+        c.classList.add('gold');
+        c.addEventListener('animationend', () => c.classList.remove('gold'), { once: true });
+      }, (ROW_OF[i] + COL_OF[i]) * 55 + 120);
+    });
+    setTimeout(() => confetti(110, PALETTE_CLEAN), 350);
+    setTimeout(() => confetti(70, PALETTE_CLEAN), 750);
+  } else {
+    setTimeout(() => confetti(90, PALETTE_WIN), 300);
+    setTimeout(() => confetti(60, PALETTE_WIN), 700);
+  }
+  vibrate(flawless ? [10, 40, 10, 40, 10, 40, 20] : [10, 60, 10, 60, 30]);
   setTimeout(() => {
     $('winTime').textContent = fmtTime(elapsed);
     $('winDiff').textContent = currentLabel;
@@ -560,6 +720,16 @@ async function startNewGame() {
   btn.textContent = 'Start';
   applyPuzzle(result);
   closeSheet('sheetNew');
+  /* deal cascade: stagger every cell by box order */
+  const b = $('board');
+  b.classList.add('deal');
+  cells.forEach((c, i) => {
+    c.style.animationDelay = `${(Math.floor(ROW_OF[i] / 3) * 3 + Math.floor(COL_OF[i] / 3)) * 22 + (ROW_OF[i] % 3) * 7 + (COL_OF[i] % 3) * 4}ms`;
+  });
+  setTimeout(() => {
+    b.classList.remove('deal');
+    cells.forEach(c => { c.style.animationDelay = ''; });
+  }, 1000);
 }
 
 function applyPuzzle(result) {
@@ -577,6 +747,8 @@ function applyPuzzle(result) {
     b.classList.remove('on');
   }
   mistakes = 0;
+  mistakesShown = 0;
+  clearTimeout(mistakesCollapseTimer);
   hintsUsed = 0;
   elapsed = 0;
   won = false;
@@ -634,6 +806,15 @@ async function restoreSave(sd) {
   }
   renderTimer();
   render();
+  /* restoring mid-game with mistakes: show the compact chip immediately */
+  const wrap = $('mistakesWrap');
+  if (mistakes > 0) {
+    wrap.hidden = false;
+    wrap.classList.add('show', 'collapsed');
+    $('mistakesCount').textContent = String(mistakes);
+    $('mistakesText').textContent = mistakes === 1 ? 'mistake' : 'mistakes';
+    mistakesShown = mistakes;
+  }
 }
 
 /* ---------- menu ---------- */
@@ -672,6 +853,10 @@ function wire() {
     if (e.target.closest('.pk-notes')) toggleNotes();
   });
   $('btnHint').addEventListener('click', requestHint);
+  $('miRecompute').addEventListener('click', () => {
+    closeSheet('sheetMenu');
+    setTimeout(recomputeNotes, 220); /* let the sheet close first */
+  });
   $('btnMenu').addEventListener('click', openMenu);
   $('btnResume').addEventListener('click', resumeGame);
 
@@ -795,6 +980,14 @@ async function boot() {
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
+    /* when a new SW takes over (new deploy), reload once so users are
+     * never stuck on a stale mixed-version UI (e.g. old dot logic) */
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloaded) return;
+      reloaded = true;
+      location.reload();
+    });
   }
 }
 
