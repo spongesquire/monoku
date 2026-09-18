@@ -23,6 +23,7 @@
   --sheet-bg: #fbfaf6;
   --key: #ffffff;
   --key-border: #e6e1d5;
+  --board-edge: #e6e1d5;
   --inset: #f0ede5;
   --radius: 14px;
   --shadow: 0 12px 40px rgba(35, 33, 28, 0.16);
@@ -54,6 +55,7 @@
   --sheet-bg: #1c1b18;
   --key: #23221e;
   --key-border: #3c3931;
+  --board-edge: transparent;
   --inset: #131211;
   --shadow: none;
 }
@@ -83,6 +85,7 @@
     --sheet-bg: #1c1b18;
     --key: #23221e;
     --key-border: #3c3931;
+    --board-edge: transparent;
     --inset: #131211;
     --shadow: none;
   }
@@ -270,7 +273,7 @@ html.standalone .app { height: var(--app-h, 100vh); }
   /* board sits in a rounded card — absorbs leftover vertical space and
    * gives the grid a deliberate object presence (reference-app look) */
   background: var(--key);
-  border: 1.5px solid var(--key-border);
+  border: 1.5px solid var(--board-edge, var(--key-border));
   border-radius: 16px;
   padding: 8px;
   position: relative;

@@ -318,7 +318,7 @@ function onPad(d) {
 function place(i, d) {
   if (given[i]) return;
   if (board[i] === d) { erase(i); return; } /* tap same digit again to clear */
-  pushHistory(i);
+  const entry = pushHistory(i);
   board[i] = d;
   notes[i].clear();
   const correct = d === solution[i];
@@ -330,7 +330,7 @@ function place(i, d) {
   } else {
     vibrate(8);
     popDigit(i, d);
-    if (settings.cleanup) cleanupNotes(i, d);
+    entry.scrubbed = { d, cells: cleanupNotes(i, d) };
     selected = settings.advance ? findNextEmpty(i) : i;
   }
   selDigit = 0;
@@ -359,8 +359,14 @@ function erase(i) {
   save();
 }
 
+/* Auto-scrub: placing d removes d from all peer notes (always on - stale
+ * notes are worse than no notes). Records removals so undo restores them. */
 function cleanupNotes(i, d) {
-  for (const j of PEERS[i]) notes[j].delete(d);
+  const touched = [];
+  for (const j of PEERS[i]) {
+    if (!board[j] && notes[j].delete(d)) touched.push(j);
+  }
+  return touched;
 }
 
 function findNextEmpty(from) {
@@ -386,7 +392,12 @@ function flashError(i) {
 
 /* ---------- undo ---------- */
 function pushHistory(i) {
-  history.push({ i, val: board[i], notes: [...notes[i]] });
+  /* snapshot + attach any note-scrubs this action performs (filled after
+   * the action runs) so a single undo reverts both cell AND peer notes */
+  const entry = { i, val: board[i], notes: [...notes[i]], scrubbed: null };
+  history.push(entry);
+  if (history.length > 300) history.shift();
+  return entry;
   if (history.length > 300) history.shift();
 }
 function undo() {
@@ -398,6 +409,8 @@ function undo() {
   } else {
     board[h.i] = h.val;
     notes[h.i] = new Set(h.notes);
+    /* restore peer notes this placement had auto-scrubbed */
+    if (h.scrubbed) for (const j of h.scrubbed.cells) notes[j].add(h.scrubbed.d);
     selected = h.i;
   }
   render();
@@ -483,10 +496,10 @@ function applyHint(step) {
   hintsUsed++;
   if (step.placements?.length) {
     const p = step.placements[0];
-    pushHistory(p.i);
+    const entry = pushHistory(p.i);
     board[p.i] = p.d;
     notes[p.i].clear();
-    cleanupNotes(p.i, p.d);
+    entry.scrubbed = { d: p.d, cells: cleanupNotes(p.i, p.d) };
     selected = p.i;
     popDigit(p.i, p.d);
   } else if (step.eliminations?.length) {
@@ -824,7 +837,6 @@ async function restoreSave(sd) {
 
 /* ---------- menu ---------- */
 function openMenu() {
-  $('cleanupVal').textContent = settings.cleanup ? 'On' : 'Off';
   $('advanceVal').textContent = settings.advance ? 'On' : 'Off';
   $('themeVal').textContent = settings.theme === 'auto' ? 'Auto' : settings.theme === 'dark' ? 'Dark' : 'Light';
   openSheet('sheetMenu');
@@ -903,11 +915,6 @@ function wire() {
     settings.theme = order[(order.indexOf(settings.theme) + 1) % 3];
     persistSettings();
     applyTheme();
-  });
-  $('miCleanup').addEventListener('click', () => {
-    settings.cleanup = !settings.cleanup;
-    persistSettings();
-    $('cleanupVal').textContent = settings.cleanup ? 'On' : 'Off';
   });
   $('miAdvance').addEventListener('click', () => {
     settings.advance = !settings.advance;
