@@ -138,7 +138,10 @@ body {
   padding-right: env(safe-area-inset-right, 0px);
   transition: background 0.3s var(--ease-standard);
 }
-html.standalone .app { height: var(--app-h, 100vh); }
+html.standalone .app { height: 100vh; }
+/* WebKit bug 254868: in standalone + viewport-fit=cover, dvh units and
+ * visualViewport.height UNDER-report by the bottom safe-area inset; 100vh
+ * includes it. JS clears --app-h in standalone so this rule wins. */
 
 /* ---------- standalone (saved to Home Screen) layout ----------
  * Safari's bottom URL bar is gone, so the window extends to the physical
@@ -298,7 +301,7 @@ html.standalone .pad {
   padding: 8px;
   position: relative;
 }
-html.standalone .board { width: min(100vw - 16px, var(--app-h, 100vh) - 280px, 520px); }
+html.standalone .board { width: min(100vw - 16px, 100vh - 280px, 520px); }
 @media (min-width: 560px) { .board { width: min(480px, calc(100dvh - 260px)); } }
 
 .cell {
