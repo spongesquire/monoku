@@ -102,8 +102,14 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* no UA form-control painting anywhere — theme is fully explicit */
+/* no UA form-control painting anywhere — theme is fully explicit.
+ * CRITICAL: appearance:none too — background:none alone does NOT remove
+ * Safari's native button bezel (border + inner shadow). In dark mode that
+ * bezel paints a light edge + dark seam on every cell, visible as dark
+ * lines around the grid. */
 button, input {
+  -webkit-appearance: none;
+  appearance: none;
   background: none;
   color: inherit;
   font: inherit;
@@ -143,10 +149,14 @@ body {
   padding-right: env(safe-area-inset-right, 0px);
   transition: background 0.3s var(--ease-standard);
 }
-html.standalone .app { height: 100vh; }
-/* WebKit bug 254868: in standalone + viewport-fit=cover, dvh units and
- * visualViewport.height UNDER-report by the bottom safe-area inset; 100vh
- * includes it. JS clears --app-h in standalone so this rule wins. */
+html.standalone .app { height: 100dvh; }
+/* Standalone height MUST match the visible viewport, not the full screen:
+ * body is position:fixed inset:0 (the layout viewport) with overflow:hidden,
+ * so an app taller than that is hard-clipped at the bottom — which is exactly
+ * the "lower ⅓ of the 6-9/Notes cards missing" bug. In standalone +
+ * viewport-fit=cover, 100vh = full screen INCLUDING the home-indicator area
+ * (taller than visible) — never use it for the shell. dvh tracks the visible
+ * viewport on iOS 16.4+ where Monyi's phone lands. */
 
 /* ---------- standalone (saved to Home Screen) layout ----------
  * Safari's bottom URL bar is gone, so the window extends to the physical
@@ -306,7 +316,7 @@ html.standalone .pad {
   padding: 8px;
   position: relative;
 }
-html.standalone .board { width: min(100vw - 16px, 100vh - 280px, 520px); }
+html.standalone .board { width: min(100vw - 16px, 100dvh - 280px, 520px); }
 @media (min-width: 560px) { .board { width: min(480px, calc(100dvh - 260px)); } }
 
 .cell {
@@ -316,6 +326,11 @@ html.standalone .board { width: min(100vw - 16px, 100vh - 280px, 520px); }
   /* both children (.notes-grid, .val) must share ONE grid area —
    * auto-placement would put them in two rows and clip digits */
   grid-template-areas: "stack";
+  /* Kill the UA button border on ALL sides, then draw only the two lines
+   * we want. Without `border: 0` first, Safari's native button border
+   * survives on the un-set top/left sides — a dark UA-colored hairline on
+   * exactly the top and left edges of the grid in dark mode. */
+  border: 0;
   border-right: 1px solid var(--grid-line);
   border-bottom: 1px solid var(--grid-line);
   /* CRITICAL: buttons default to UA buttonface (light!) unless overridden —
