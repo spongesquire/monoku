@@ -57,7 +57,12 @@
   --sheet-bg: #1c1b18;
   --key: #23221e;
   --key-border: #3c3931;
-  --board-edge: transparent;
+  /* board edge PAINTS the card's own fill color: a transparent 1.5px border
+   * at fractional DPR leaves an AA crack where the rounded-corner edge
+   * blends into black — visible as a dark seam on the top/left. Matching
+   * paint covers the crack with card-colored pixels (right/bottom already
+   * looked clean because their AA falls on the lighter side). */
+  --board-edge: #23221e;
   --inset: #131211;
   --shadow: none;
 }
@@ -88,7 +93,8 @@
     --sheet-bg: #1c1b18;
     --key: #23221e;
     --key-border: #3c3931;
-    --board-edge: transparent;
+    /* same AA-crack fix as the manual dark block above */
+    --board-edge: #23221e;
     --inset: #131211;
     --shadow: none;
   }
@@ -126,7 +132,6 @@ body {
 
 .app {
   height: 100dvh;
-  height: var(--app-h, 100dvh);
   display: flex;
   flex-direction: column;
   align-items: center;

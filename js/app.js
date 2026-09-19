@@ -1020,34 +1020,18 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-/* ---------- iOS standalone viewport fix ---------- */
-function installViewportFix() {
-  const apply = () => {
-    const root = document.documentElement;
-    if (root.classList.contains('standalone')) {
-      /* WebKit bug 254868: in standalone + viewport-fit=cover,
-       * visualViewport.height and dvh units UNDER-report by the bottom
-       * safe-area inset, which would leave a dead band under the pad
-       * (compounding the pad's own 34px gesture-zone clearance).
-       * 100vh includes the inset — let the CSS fallback rule win. */
-      root.style.removeProperty('--app-h');
-      return;
-    }
-    const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-    root.style.setProperty('--app-h', `${h}px`);
-  };
-  apply();
-  window.addEventListener('resize', apply);
-  window.addEventListener('orientationchange', apply);
-  if (window.visualViewport) window.visualViewport.addEventListener('resize', apply);
-}
+/* ---------- iOS viewport ----------
+ * No JS height measurement: visualViewport.height lags behind Safari's
+ * live URL-bar animations, and a stale value clips the pad's bottom row
+ * (the Notes card). dvh units are recomputed by the engine in real time
+ * and never go stale — standalone uses plain 100vh (includes the inset,
+ * WebKit bug 254868 workaround). */
 
 /* ---------- boot ---------- */
 async function boot() {
   buildBoard();
   loadSettings();
   wire();
-  installViewportFix();
 
   /* ask for persistent storage so progress survives long gaps (installed PWA) */
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) {}

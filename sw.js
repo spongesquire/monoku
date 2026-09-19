@@ -2,7 +2,7 @@
  * Strategy: precache the full app shell, then stale-while-revalidate.
  * After first load the app is 100% functional offline, forever.
  */
-const CACHE = 'monoku-v16';
+const CACHE = 'monoku-v17';
 const SHELL = [
   './',
   './index.html',
