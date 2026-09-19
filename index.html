@@ -201,6 +201,7 @@
     </div>
     <h3 class="menu-heading">Gestures</h3>
     <ul class="gesture-list">
+      <li><b>Double-tap</b> a number on the board to arm it — then tap empty cells to fill them in</li>
       <li><b>Tap</b> a cell, then a number to place it</li>
       <li><b>Notes</b> mode writes small guesses</li>
       <li><b>Double-tap</b> a cell with one note to commit it</li>
@@ -211,6 +212,14 @@
       <button class="btn-primary" id="btnMenuClose">Close</button>
     </div>
   </div>
+</div>
+
+<!-- Floating hint action pill — appears after "Show me where" dismisses the sheet -->
+<div class="hint-float" id="hintFloat" hidden>
+  <button class="hf-btn hf-action" id="hintFloatAction">Place</button>
+  <button class="hf-btn hf-close" id="hintFloatClose" aria-label="Dismiss hint">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+  </button>
 </div>
 
 <canvas id="fx" aria-hidden="true"></canvas>

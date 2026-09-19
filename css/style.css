@@ -18,7 +18,8 @@
   --error: #b3261e;
   --error-soft: rgba(179, 38, 30, 0.10);
   --same-soft: rgba(194, 68, 13, 0.14);
-  --peer-soft: rgba(35, 33, 28, 0.045);
+  --peer-soft: rgba(35, 33, 28, 0.05);
+  --peer-soft-2: rgba(35, 33, 28, 0.022);
   --note: #8a8578;
   --sheet-bg: #fbfaf6;
   --key: #ffffff;
@@ -50,7 +51,8 @@
   --error: #ff6b5e;
   --error-soft: rgba(255, 107, 94, 0.16);
   --same-soft: rgba(255, 106, 61, 0.22);
-  --peer-soft: rgba(240, 237, 230, 0.08);
+  --peer-soft: rgba(240, 237, 230, 0.085);
+  --peer-soft-2: rgba(240, 237, 230, 0.035);
   --note: #b8b2a4;
   --sheet-bg: #1c1b18;
   --key: #23221e;
@@ -80,7 +82,8 @@
     --error: #ff6b5e;
     --error-soft: rgba(255, 107, 94, 0.16);
     --same-soft: rgba(255, 106, 61, 0.22);
-    --peer-soft: rgba(240, 237, 230, 0.08);
+    --peer-soft: rgba(240, 237, 230, 0.085);
+    --peer-soft-2: rgba(240, 237, 230, 0.035);
     --note: #b8b2a4;
     --sheet-bg: #1c1b18;
     --key: #23221e;
@@ -136,6 +139,23 @@ body {
   transition: background 0.3s var(--ease-standard);
 }
 html.standalone .app { height: var(--app-h, 100vh); }
+
+/* ---------- standalone (saved to Home Screen) layout ----------
+ * Safari's bottom URL bar is gone, so the window extends to the physical
+ * bottom edge. Apple's guidance: paint content into that space but keep
+ * interactive controls clear of the home-indicator gesture zone. So the
+ * app background runs edge-to-edge, the pad anchors to the bottom of the
+ * screen with a guaranteed ≥34px clearance (env() can report 0 in
+ * standalone, hence the max() floor), and the board absorbs the freed
+ * vertical space — a native-app vertical rhythm instead of evenly
+ * floating sections. */
+html.standalone .app {
+  justify-content: flex-start;
+}
+html.standalone .board-wrap { flex: 1 1 auto; }
+html.standalone .pad {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 34px);
+}
 
 /* push the pad toward the bottom edge (thumb zone) instead of leaving dead space */
 
@@ -330,9 +350,13 @@ html.standalone .board { width: min(100vw - 16px, var(--app-h, 100vh) - 280px, 5
 .cell .notes-grid .n.hl { color: var(--accent); font-weight: 700; }
 
 /* selection & highlight states */
+.cell { transition: background-color 0.13s var(--ease-standard); }
 .cell.sel { background: var(--accent-soft); }
+/* peer highlight runs the whole row/col/box so the band reads continuous;
+ * empty peers (the actionable cells) keep the stronger wash */
+.cell.peer { background: var(--peer-soft-2); }
+.cell.peer.empty { background: var(--peer-soft); }
 .cell.same { background: var(--same-soft); }
-.cell.peer { background: var(--peer-soft); }
 .cell.error { background: var(--error-soft); }
 .cell.same .val, .cell.same .notes-grid .n.on { color: var(--accent); }
 
@@ -372,6 +396,56 @@ html.standalone .board { width: min(100vw - 16px, var(--app-h, 100vh) - 280px, 5
   0%, 100% { background: var(--accent-soft); }
   50% { background: var(--same-soft); }
 }
+
+/* ---------- floating hint pill ----------
+ * After "Show me where" closes the sheet, this pill offers the final
+ * step (place/apply) without covering the board. Anchored just above
+ * the number pad by JS. */
+.hint-float[hidden] { display: none !important; }
+.hint-float {
+  position: fixed;
+  left: 50%;
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--sheet-bg);
+  border: 1px solid var(--key-border);
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transform: translateX(-50%) translateY(10px) scale(0.95);
+  transition: opacity 0.22s var(--ease-standard), transform 0.26s var(--ease-out);
+  pointer-events: none;
+}
+.hint-float.show { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); pointer-events: auto; }
+.hf-btn {
+  font-family: var(--font);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hf-action {
+  min-height: 38px;
+  padding: 0 18px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 14px;
+  font-weight: 600;
+}
+:root[data-theme="dark"] .hf-action { color: #000000; }
+.hf-action:active { transform: scale(0.96); }
+.hf-close {
+  width: 34px;
+  height: 34px;
+  color: var(--ink-2);
+}
+.hf-close:active { transform: scale(0.92); }
+.hf-close svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
 
 /* ---------- celebrate / motion layer ---------- */
 

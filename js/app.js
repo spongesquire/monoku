@@ -29,6 +29,8 @@ let currentSE = null;
 let settings = { theme: 'auto', cleanup: true, advance: true };
 let lastTap = { i: -1, t: 0, note: 0 };
 let hintPulseTimer = null;
+let hintFloatTimer = null;
+let rainTimer = null;
 
 /* ---------- persistence (primary: localStorage, mirror: IndexedDB) ---------- */
 const SAVE_KEY = 'monoku_save_v1';
@@ -170,7 +172,11 @@ function render() {
     c.classList.toggle('sel', i === selected);
     /* same-number highlight: any cell whose value equals the armed/selected digit */
     c.classList.toggle('same', !!v && v === hlDigit && i !== selected);
-    c.classList.toggle('peer', selected >= 0 && i !== selected && !v && isPeer(i, selected));
+    /* peer highlight runs the full row/col/box — filled cells too, so the
+     * lighter line reads as one continuous band; empty peers get the
+     * stronger wash (they're the actionable ones) */
+    c.classList.toggle('peer', selected >= 0 && i !== selected && isPeer(i, selected));
+    c.classList.toggle('empty', !v);
     const showNotes = !v && notes[i].size > 0;
     const valEl = c.querySelector('.val');
     valEl.textContent = v || '';
@@ -280,28 +286,39 @@ function onCellTap(i, noteDigit = 0) {
   if (won) return;
   const now = Date.now();
   if (lastTap.i === i && now - lastTap.t < 320) {
-    /* double-tap: promote a guess to an answer.
-       If both taps landed on the same note digit, commit that digit.
-       If the cell holds exactly one note, commit it. */
-    const d = (lastTap.note && lastTap.note === noteDigit) ? noteDigit
-      : (lastTap.note || noteDigit) ? 0 : 0;
+    const wasPlaced = lastTap.placed; /* first tap of this pair placed a digit */
+    /* double-tap a small note: promote exactly that guess to an answer */
+    if (noteDigit && lastTap.note === noteDigit) {
+      lastTap = { i: -1, t: 0, note: 0 };
+      place(i, noteDigit);
+      return;
+    }
+    const d = board[i] || given[i];
     lastTap = { i: -1, t: 0, note: 0 };
-    if (d) { place(i, d); return; }
-    if (!board[i] && notes[i].size === 1) { place(i, [...notes[i]][0]); return; }
-    select(i, true);
+    /* empty cell holding exactly one note: commit it */
+    if (!d && notes[i].size === 1) { place(i, [...notes[i]][0]); return; }
+    /* double-tap a number on the board: ARM it — every copy lights up and
+     * the next empty cell tapped takes that digit. Toggle again to disarm. */
+    if (d && !wasPlaced) {
+      selDigit = selDigit === d ? 0 : d;
+      vibrate(selDigit ? 8 : 5);
+    }
+    select(i, selDigit === d);
     return;
   }
   lastTap = { i, t: now, note: noteDigit };
 
-  if (!board[i] && !given[i]) {
-    if (selDigit) {
-      if (notesMode) toggleNote(i, selDigit);
-      else place(i, selDigit);
-      return;
-    }
+  if (!board[i] && !given[i] && selDigit) {
+    /* armed digit + empty cell: place (or pencil) immediately */
+    lastTap.placed = true;
+    if (notesMode) toggleNote(i, selDigit);
+    else place(i, selDigit);
+    return;
   }
-  /* tapping a filled cell: select + highlight its digit, keep an armed digit armed */
-  select(i, true);
+  /* single tap: select and highlight. An armed digit survives only when the
+   * tapped number IS the armed digit — tapping another number deselects it. */
+  const v = board[i] || given[i];
+  select(i, !!v && selDigit === v);
 }
 
 function onPad(d) {
@@ -410,6 +427,7 @@ function pushHistory(i) {
 function undo() {
   const h = history.pop();
   if (!h) return;
+  lastTap = { i: -1, t: 0, note: 0 };
   if (h.multi) {
     notes = h.multi.map(a => new Set(a));
     selected = -1;
@@ -485,18 +503,53 @@ function showHintSheet(step) {
   next.textContent = targets.length ? 'Show me where' : 'Got it';
   next.onclick = () => {
     if (targets.length) {
-      for (const i of targets) cells[i].classList.add('hint-target');
-      clearTimeout(hintPulseTimer);
-      hintPulseTimer = setTimeout(() => {
-        document.querySelectorAll('.hint-target').forEach(el => el.classList.remove('hint-target'));
-      }, 3400);
-      next.textContent = step.placements?.length ? 'Place it for me' : 'Apply it';
-      next.onclick = () => applyHint(step);
+      /* close the sheet FIRST so the board is actually visible, then pulse
+       * the target cells and surface a floating pill for the follow-up */
+      closeSheet('sheetHint');
+      pulseHintTargets(targets);
+      showHintFloat(step);
     } else {
       closeSheet('sheetHint');
     }
   };
   openSheet('sheetHint');
+}
+
+function pulseHintTargets(targets) {
+  for (const i of targets) cells[i].classList.add('hint-target');
+  clearTimeout(hintPulseTimer);
+  hintPulseTimer = setTimeout(() => {
+    document.querySelectorAll('.hint-target').forEach(el => el.classList.remove('hint-target'));
+  }, 3400);
+}
+
+/* floating pill after "Show me where": offers the final step (place / apply)
+ * without covering the board. Sits just above the number pad, auto-hides
+ * with the pulse; tap ✕ to dismiss early. */
+function showHintFloat(step) {
+  const float = $('hintFloat');
+  const btn = $('hintFloatAction');
+  const isPlace = !!step.placements?.length;
+  btn.textContent = isPlace ? 'Place it for me' : 'Apply it';
+  /* anchor just above the number pad (fixed positioning, viewport coords) */
+  const padTop = $('pad').getBoundingClientRect().top;
+  float.style.bottom = `${window.innerHeight - padTop + 10}px`;
+  float.hidden = false;
+  requestAnimationFrame(() => float.classList.add('show'));
+  /* rebind handlers — previous hint's closures must not linger */
+  btn.onclick = () => { hideHintFloat(); applyHint(step); };
+  $('hintFloatClose').onclick = () => hideHintFloat();
+  clearTimeout(hintFloatTimer);
+  hintFloatTimer = setTimeout(hideHintFloat, 3400);
+}
+
+function hideHintFloat() {
+  const float = $('hintFloat');
+  clearTimeout(hintFloatTimer);
+  if (float.hidden) return;
+  float.classList.remove('show');
+  /* let the fade-out run before display:none */
+  setTimeout(() => { float.hidden = true; }, 260);
 }
 
 function applyHint(step) {
@@ -513,6 +566,7 @@ function applyHint(step) {
     for (const e of step.eliminations) notes[e.i].delete(e.d);
   }
   document.querySelectorAll('.hint-target').forEach(el => el.classList.remove('hint-target'));
+  hideHintFloat();
   closeSheet('sheetHint');
   checkWin();
   render();
@@ -524,28 +578,33 @@ function applyHint(step) {
 function recomputeNotes() {
   if (won) return;
   pushHistoryMulti();
-  let filledCells = 0;
   const rainCells = [];
   for (let i = 0; i < 81; i++) {
     if (board[i] || given[i]) continue;
     const cand = candidatesFor(i);
     if (!cand.size) continue;
     notes[i] = cand;
-    filledCells++;
     rainCells.push(i);
   }
-  render();
-  /* staggered shimmer: sweep across boxes left-to-right, top-to-bottom */
+  /* Arm the shimmer BEFORE render: note spans persist across renders, so
+   * setting class + inline delay now means each freshly-shown note is held
+   * at opacity 0 by the animation's backwards fill until its stagger slot
+   * arrives — one continuous sweep, no flash-then-restart jitter. */
   for (const i of rainCells) {
-    const delay = (ROW_OF[i] * 9 + COL_OF[i]) * 6;
-    for (const n of cells[i].querySelectorAll('.n.on')) {
-      const el = n;
-      setTimeout(() => {
-        el.classList.add('rain');
-        el.addEventListener('animationend', () => el.classList.remove('rain'), { once: true });
-      }, delay);
+    const delay = (ROW_OF[i] * 9 + COL_OF[i]) * 5;
+    for (const n of cells[i].querySelectorAll('.n')) {
+      const had = n.classList.contains('rain');
+      n.style.animationDelay = `${delay}ms`;
+      n.classList.remove('rain');
+      if (had) void n.offsetWidth; /* restart cleanly if a sweep is mid-flight */
+      n.classList.add('rain');
+      n.addEventListener('animationend', () => {
+        n.classList.remove('rain');
+        n.style.animationDelay = '';
+      }, { once: true });
     }
   }
+  render();
   vibrate([6, 30, 6]);
   save();
 }
@@ -765,6 +824,7 @@ function applyPuzzle(result) {
   history = [];
   selected = -1;
   selDigit = 0;
+  lastTap = { i: -1, t: 0, note: 0 };
   notesMode = false;
   for (const b of [$('btnNotes'), document.getElementById('padNotes')]) {
     if (!b) continue;
