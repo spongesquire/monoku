@@ -5,6 +5,6 @@
   "type": "module",
   "description": "Monoku — offline-first Sudoku for Mon. Logic difficulty, teaching hints.",
   "scripts": {
-    "test": "node --test tests/engine.test.js"
+    "test": "node --test tests/engine.test.js tests/hint_v2.test.mjs"
   }
 }

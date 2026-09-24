@@ -155,7 +155,7 @@ export function candidatesOf(grid) {
   return cand;
 }
 
-/* ---------- logical grader / hint engine ----------
+/* ---------- grader / hint engine ----------
  * Technique ladder with SE-style weights (SudokuExplainer-informed).
  * Each scanner returns a step object or null. Steps carry hint strings:
  *   { tech, weight, placements:[{i,d}], eliminations:[{i,d}], hint:{tech,where,what,why} }
@@ -496,6 +496,208 @@ export function grade(puzzle) {
 
 export function nextStep(board) {
   return grade(board).steps[0] ?? null;
+}
+
+/* ---------- hint engine v2: honest, multi-step, mistake-aware ----------
+ * hintsFor(board, solution) is what the app calls. It returns an ARRAY of
+ * candidate hints (all valid from the current position, best first) so the
+ * UI can offer "show me a different hint". Ordered:
+ *   1. mistake alert      — user entries that contradict the solution
+ *   2. all singles        — every Full House / Hidden / Naked Single that
+ *                           applies right now (variety, not one fixed hint)
+ *   3. first ladder step  — pointing/claiming/subsets/fish/wings
+ *   4. T&E fallback       — verified next cell (for chain-heavy positions
+ *                           the ladder can't explain; states it plainly)
+ * Trailing chained steps (what the chosen deduction unlocks) are attached
+ * as `next` for "and then…" context — never shown as the main hint.
+ */
+export function hintsFor(board, solution, notesMasks = null) {
+  const out = [];
+
+  /* 1. wrong user entries poison every deduction — flag them first and
+   *    refuse to hint on a corrupted board. */
+  const wrong = [];
+  for (let i = 0; i < 81; i++) {
+    if (board[i] && board[i] !== solution[i]) wrong.push(i);
+  }
+  if (wrong.length) {
+    const names = wrong.map(cellName).join(', ');
+    out.push({
+      tech: 'Mistake', weight: 0, placements: [], eliminations: [],
+      wrongCells: wrong,
+      hint: {
+        tech: 'Check your entries first',
+        where: wrong.length === 1 ? `${cellName(wrong[0])} looks wrong` : `${wrong.length} cells conflict with the solution`,
+        what: `${names} ${wrong.length === 1 ? 'doesn\u2019t match' : 'don\u2019t match'} the puzzle\u2019s solution`,
+        why: `Hints follow logic from what\u2019s on the board. Clear the red ${wrong.length === 1 ? 'entry' : 'entries'} (or undo) and hints will guide you from a clean position.`,
+      },
+    });
+    return out; // no logic hints on a corrupted board — they'd be nonsense
+  }
+
+  const vals = board.slice();
+  const cand = candidatesOf(vals);
+  /* Notes are used ONLY to filter, never to derive: an elimination the
+   * player already applied (it's gone from their notes) must not re-offer.
+   * Deriving FROM notes would let incomplete notes fabricate false hints. */
+  const notesHave = (i, d) => (notesMasks ? (notesMasks[i] & BIT[d]) !== 0 : true);
+
+  /* 2. all simultaneous singles: full houses, hidden singles, naked singles.
+   *    Each is independently true right now — a fresh, different hint per tap. */
+  for (const h of HOUSES) {
+    let empty = -1, count = 0, mask = 0;
+    for (const i of h.cells) {
+      if (vals[i]) mask |= BIT[vals[i]];
+      else { empty = i; count++; }
+    }
+    if (count === 1) {
+      const d = digitsOf(ALL & ~mask)[0];
+      out.push(mkStep('Full House', 1.0, [{ i: empty, d }], [],
+        `${cap(houseName(h))} has just one empty cell`,
+        `${cellName(empty)} = ${d}`,
+        `Every house must contain 1–9 exactly once. ${cap(houseName(h))} already has every digit except ${d}, and ${cellName(empty)} is its only empty cell.`));
+    }
+  }
+
+  // hidden singles: every house × digit with exactly one spot
+  for (const h of HOUSES) {
+    for (let d = 1; d <= 9; d++) {
+      const b = BIT[d];
+      let spot = -1, n = 0;
+      for (const i of h.cells) { if (!vals[i] && (cand[i] & b)) { spot = i; n++; if (n > 1) break; } }
+      if (n === 1 && spot >= 0) {
+        out.push(mkStep('Hidden Single', h.type === 'box' ? 1.2 : 1.5, [{ i: spot, d }], [],
+          `In ${houseName(h)}, digit ${d} fits in only one place`,
+          `${cellName(spot)} = ${d}`,
+          `Every other cell in ${houseName(h)} is blocked for ${d} by a ${d} in its row or column.`));
+      }
+    }
+  }
+
+  // naked singles: every cell with exactly one candidate
+  for (let i = 0; i < 81; i++) {
+    if (vals[i] || cand[i] === 0 || POP[cand[i]] !== 1) continue;
+    const d = digitsOf(cand[i])[0];
+    out.push(mkStep('Naked Single', 2.3, [{ i, d }], [],
+      `${cellName(i)} has exactly one candidate left`,
+      `${cellName(i)} = ${d}`,
+      `Every other digit already appears in ${cellName(i)}'s row, column, or box — only ${d} can go there.`));
+  }
+
+  /* dedupe: a full house IS a hidden single, and one cell can be found from
+   * several houses — same cell+digit is the same hint to the player.
+   * Keep the first occurrence (full house → hidden → naked order). */
+  {
+    const seen = new Set();
+    const deduped = [];
+    for (const s of out) {
+      const p = s.placements[0];
+      if (!p) { deduped.push(s); continue; }
+      const key = `${p.i}:${p.d}`;
+      if (seen.has(key)) continue;
+      seen.add(key); deduped.push(s);
+    }
+    out.length = 0; out.push(...deduped);
+  }
+
+  /* chained lookahead for singles: "and then…" — apply the placement,
+   * see what it unlocks (next two singles-level steps). Pedagogically
+   * this teaches players to spot cascades, and it's cheap to compute. */
+  for (const s of out) {
+    const vals2 = vals.slice(), cand2 = cand.slice();
+    for (const p of s.placements) {
+      vals2[p.i] = p.d; cand2[p.i] = 0;
+      for (const j of PEERS[p.i]) cand2[j] &= ~BIT[p.d];
+    }
+    const trail = [];
+    for (let k = 0; k < 2; k++) {
+      const s2 = firstSingleStep(vals2, cand2);
+      if (!s2) break;
+      trail.push(s2);
+      for (const p of s2.placements) {
+        vals2[p.i] = p.d; cand2[p.i] = 0;
+        for (const j of PEERS[p.i]) cand2[j] &= ~BIT[p.d];
+      }
+    }
+    if (trail.length) s.next = trail;
+  }
+
+  /* 3. one deeper technique step (pointing/claiming/subsets/fish/wings) —
+   *    always appended after the singles so cycling can reach it. It is a
+   *    true statement about the current position even while singles exist. */
+  {
+    let step = firstTechniqueStep(vals, cand);
+    if (step && notesMasks) {
+      const fresh = step.eliminations.filter(e => notesHave(e.i, e.d));
+      if (!fresh.length) step = null; // fully applied already — don't re-offer
+      else if (fresh.length < step.eliminations.length) step.eliminations = fresh;
+    }
+    if (step) out.push(step);
+  }
+
+  /* 4. T&E fallback: appended whenever the queue still lacks an actionable
+   *    placement — the cycle always ends in something the player can DO.
+   *    (Chain-heavy positions where no ladder pattern exists at all, or
+   *    queues that are elimination-only, which a no-notes player can't act
+   *    on.) Proven by contradiction, stated honestly. */
+  const hasPlacement = out.some(s => s.placements?.length);
+  if (!hasPlacement) {
+    const te = trialAndErrorStep(board, solution);
+    if (te) {
+      te.weight = 0; // educational, not a graded technique
+      out.push(te);
+    }
+  }
+
+  return out;
+}
+
+/* first singles-level step from this position (used for trail lookahead) */
+function firstSingleStep(vals, cand) {
+  for (let k = 0; k < 4; k++) {
+    const s = LADDER[k](vals, cand);
+    if (s) return s;
+  }
+  return null;
+}
+
+/* first technique BEYOND singles (pointing/claiming/subsets/fish/wings) */
+function firstTechniqueStep(vals, cand) {
+  for (let k = 4; k < LADDER.length; k++) {
+    const s = LADDER[k](vals, cand);
+    if (s) return s;
+  }
+  return null;
+}
+
+/* verified trial-&-error step: for the cell the solution fills "next"
+ * (fewest candidates), prove each alternative leads to contradiction.
+ * Returns a step that places the true digit with an honest explanation. */
+function trialAndErrorStep(board, solution) {
+  const cand = candidatesOf(board);
+  let best = -1, bestN = 10;
+  for (let i = 0; i < 81; i++) {
+    if (board[i] || cand[i] === 0) continue;
+    const n = POP[cand[i]];
+    if (n >= 2 && n < bestN) { bestN = n; best = i; if (n === 2) break; }
+  }
+  if (best === -1) return null;
+  const d = solution[best];
+  if (!d || !(cand[best] & BIT[d])) return null; // true digit must be a candidate
+  const others = digitsOf(cand[best] & ~BIT[d]);
+  if (!others.length) return null; // naked single — shouldn't reach here, but be safe
+  const proven = others.every((alt) => solveCount(withDigit(board, best, alt), 2) === 0);
+  if (!proven) return null; // alternatives not refutable cheaply — no honest hint
+  return mkStep('Trial & Error', 0, [{ i: best, d }], [],
+    `No simple pattern fits here — but ${cellName(best)} can be proven`,
+    `${cellName(best)} = ${d}`,
+    `Trying each of ${others.join(', ')} in ${cellName(best)} quickly leads to a contradiction — so ${cellName(best)} = ${d}. Chains and advanced tables would show why; this corner of the puzzle needs them.`);
+}
+
+function withDigit(grid, i, d) {
+  const g = grid.slice();
+  g[i] = d;
+  return g;
 }
 
 /* ---------- difficulty bands & generation ---------- */

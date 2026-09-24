@@ -703,6 +703,10 @@ html.standalone .board { width: min(100vw - 16px, 100dvh - 280px, 520px); }
 .sheet-actions { display: flex; gap: 12px; margin-top: 24px; }
 .sheet-actions .btn-primary { flex: 1.6; }
 .sheet-actions .btn-ghost { flex: 1; }
+/* three-button hint row: keep them on one line even on narrow phones */
+.hint-actions { flex-wrap: nowrap; }
+.hint-actions .btn-ghost { flex: 1; font-size: 14px; }
+.hint-actions .btn-primary { flex: 1.4; font-size: 15px; }
 
 .btn-primary {
   min-height: 50px;

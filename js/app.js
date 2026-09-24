@@ -1,6 +1,6 @@
 /* Paper Sudoku — app logic (ES module) — branded Monoku */
 import {
-  generate, generateWithTarget, nextStep,
+  generate, generateWithTarget, nextStep, hintsFor,
   ROW_OF, COL_OF, BOX_OF, PEERS,
 } from './engine.js';
 
@@ -78,7 +78,7 @@ function snapshot() {
   return {
     given: [...given], board: [...board], solution: [...solution],
     notes: notes.map(s => [...s]),
-    history: history.slice(-200).map(h => ({ ...h, notes: [...h.notes] })),
+    history: history.slice(-200).map(h => ({ ...h, notes: h.notes ? [...h.notes] : null })),
     elapsed, mistakes, hintsUsed,
     currentDiff, currentLabel, currentSE, won,
     savedAt: Date.now(),
@@ -471,32 +471,80 @@ function sheetOpen() {
   return ['sheetNew', 'sheetHint', 'sheetWin', 'sheetMenu'].some(id => !$(id).hidden);
 }
 
-/* ---------- hints (progressive, Hintoku-style) ---------- */
-function requestHint() {
-  if (won) return;
-  const step = nextStep(board);
-  if (!step) {
-    showHintSheet({
-      hint: {
-        tech: 'No logical step found',
-        where: 'The board is stuck',
-        what: 'This position has no deduction in the technique ladder',
-        why: 'There is probably a wrong entry — check the red cells, or undo back to your last confident move.',
-      },
-      placements: [], eliminations: [],
-    });
-    return;
+/* ---------- hints (progressive, Hintoku-style, dismissable) ----------
+ * hintsFor() returns EVERY deduction that's valid right now; the sheet
+ * cycles through them ("Different hint"). Any board change invalidates
+ * the queue — hints can never act on a stale position. */
+let hintQueue = null; // { steps, idx, fp }
+
+function boardFingerprint() {
+  let s = '';
+  for (let i = 0; i < 81; i++) s += board[i];
+  /* notes are part of the position: an applied elimination must refresh the
+   * queue so it never re-offers itself */
+  for (let i = 0; i < 81; i++) {
+    if (board[i]) continue;
+    s += '.';
+    for (const d of notes[i]) s += d;
   }
-  showHintSheet(step);
+  return s;
 }
 
-function showHintSheet(step) {
+/* player notes as engine bitmasks — empty cells with no notes read as
+ * "no information" (mask 0), NOT "all digits possible" */
+function notesMasks() {
+  const m = new Int16Array(81);
+  for (let i = 0; i < 81; i++) {
+    if (board[i]) continue;
+    let mask = 0;
+    for (const d of notes[i]) mask |= 1 << (d - 1);
+    m[i] = mask;
+  }
+  return m;
+}
+
+function requestHint() {
+  if (won) return;
+  const fp = boardFingerprint();
+  if (!hintQueue || hintQueue.fp !== fp) {
+    hintQueue = { steps: hintsFor(board, solution, notesMasks()), idx: 0, fp };
+  } else {
+    hintQueue.idx = (hintQueue.idx + 1) % hintQueue.steps.length; // re-ask = next hint
+  }
+  if (!hintQueue.steps.length) {
+    showHintSheet({
+      hint: {
+        tech: 'No hint available',
+        where: 'This position resists the pattern library',
+        what: 'No deduction in the technique ladder applies here',
+        why: 'This corner needs deep chains the hint engine can\u2019t explain simply. Try Recompute notes and look for pairs, or undo back a step.',
+      },
+      placements: [], eliminations: [],
+    }, 0, 0, fp);
+    hintQueue = null;
+    return;
+  }
+  showHintSheet(hintQueue.steps[hintQueue.idx], hintQueue.idx, hintQueue.steps.length, fp);
+}
+
+function showHintSheet(step, idx, total, fp) {
   $('hintTitle').textContent = step.hint.tech;
   $('hintWhere').textContent = step.hint.where;
   $('hintWhat').textContent = step.hint.what;
-  $('hintWhy').textContent = step.hint.why;
+  let why = step.hint.why;
+  if (step.next?.length) {
+    const trail = step.next.map(s => s.hint.what).join(', then ');
+    why += ` Solving this unlocks: ${trail}.`;
+  }
+  $('hintWhy').textContent = why;
+  $('hintKicker').textContent = total > 1 ? `Hint ${idx + 1} of ${total}` : 'Hint';
+  const alt = $('btnHintAlt');
+  alt.hidden = total <= 1;
+  alt.textContent = `Different hint`;
+  alt.onclick = () => { vibrate(4); requestHint(); }; // cycles to the next valid hint
   const next = $('btnHintNext');
   const targets = [
+    ...(step.wrongCells?.slice(0, 8) ?? []),
     ...(step.placements?.[0] ? [step.placements[0].i] : []),
     ...(step.eliminations?.slice(0, 8).map(e => e.i) ?? []),
   ];
@@ -507,7 +555,7 @@ function showHintSheet(step) {
        * the target cells and surface a floating pill for the follow-up */
       closeSheet('sheetHint');
       pulseHintTargets(targets);
-      showHintFloat(step);
+      showHintFloat(step, fp);
     } else {
       closeSheet('sheetHint');
     }
@@ -525,19 +573,27 @@ function pulseHintTargets(targets) {
 
 /* floating pill after "Show me where": offers the final step (place / apply)
  * without covering the board. Sits just above the number pad, auto-hides
- * with the pulse; tap ✕ to dismiss early. */
-function showHintFloat(step) {
+ * with the pulse; tap ✕ to dismiss early. Apply is fingerprint-guarded so
+ * a pill from an old position can never act on a changed board. */
+function showHintFloat(step, fp) {
   const float = $('hintFloat');
   const btn = $('hintFloatAction');
   const isPlace = !!step.placements?.length;
-  btn.textContent = isPlace ? 'Place it for me' : 'Apply it';
+  const isMistake = !!step.wrongCells?.length;
+  btn.textContent = isMistake
+    ? (step.wrongCells.length === 1 ? 'Clear it for me' : 'Clear them for me')
+    : isPlace ? 'Place it for me' : 'Apply it';
   /* anchor just above the number pad (fixed positioning, viewport coords) */
   const padTop = $('pad').getBoundingClientRect().top;
   float.style.bottom = `${window.innerHeight - padTop + 10}px`;
   float.hidden = false;
   requestAnimationFrame(() => float.classList.add('show'));
   /* rebind handlers — previous hint's closures must not linger */
-  btn.onclick = () => { hideHintFloat(); applyHint(step); };
+  btn.onclick = () => {
+    if (fp !== boardFingerprint()) { hideHintFloat(); return; }
+    hideHintFloat();
+    applyHint(step);
+  };
   $('hintFloatClose').onclick = () => hideHintFloat();
   clearTimeout(hintFloatTimer);
   hintFloatTimer = setTimeout(hideHintFloat, 3400);
@@ -554,7 +610,10 @@ function hideHintFloat() {
 
 function applyHint(step) {
   hintsUsed++;
-  if (step.placements?.length) {
+  if (step.wrongCells?.length) {
+    /* mistake hint: clear the wrong entries (each undoable) */
+    for (const i of step.wrongCells) erase(i);
+  } else if (step.placements?.length) {
     const p = step.placements[0];
     const entry = pushHistory(p.i);
     board[p.i] = p.d;
