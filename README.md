@@ -9,8 +9,12 @@ A calm, offline-first Sudoku — made for Mon.
   Easy/Medium/Hard/Diabolical bands, plus a fine-grained slider (SE 1.0–9.0).
 - **Guaranteed unique solutions** — every puzzle is uniqueness-checked during
   generation and asserted again before it ships to the board.
-- **Teaching hints** — a Hintoku-style progressive hint engine: technique name →
-  where → why → show me → place it.
+- **Teaching hints** — a Hintoku-style progressive hint engine, four levels per
+  deduction: nudge (how hard + what kind of move) → technique (name + one-line
+  lesson) → clue (where to look, region pulses on the board — no answer) →
+  walkthrough (full logic). "Different hint" swaps to another valid deduction
+  at the same level; a mistake anywhere is flagged first and fixed before any
+  logic hint.
 - **Quality of life** — pencil notes with auto-cleanup, double-tap a note to commit,
   same-number highlighting, immediate wrong-entry flagging, undo, timer with
   auto-pause, per-difficulty best times.

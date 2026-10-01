@@ -166,8 +166,21 @@ const digitsOf = (mask) => { const a = []; for (let d = 1; d <= 9; d++) if (mask
 const houseName = (h) => h.type === 'box' ? `box ${h.idx + 1}` : h.type === 'row' ? `row ${h.idx + 1}` : `column ${h.idx + 1}`;
 const plural = (n, s, p) => n === 1 ? s : (p ?? s + 's');
 
-function mkStep(tech, weight, placements, eliminations, where, what, why) {
-  return { tech, weight, placements: placements ?? [], eliminations: eliminations ?? [], hint: { tech, where, what, why } };
+function mkStep(tech, weight, placements, eliminations, where, what, why, extra = {}) {
+  return {
+    tech, weight,
+    placements: placements ?? [],
+    eliminations: eliminations ?? [],
+    /* teaching layer for progressive hints:
+     *   region/regionName — where to look (highlighted before any answer)
+     *   nudge  — one-line "what this technique is" (level 2)
+     *   clue   — directional text that withholds the answer (level 3) */
+    region: extra.region ?? [],
+    regionName: extra.regionName ?? null,
+    nudge: extra.nudge ?? null,
+    clue: extra.clue ?? null,
+    hint: { tech, where, what, why },
+  };
 }
 
 function scanFullHouse(vals, cand) {
@@ -182,7 +195,12 @@ function scanFullHouse(vals, cand) {
       return mkStep('Full House', 1.0, [{ i: empty, d }], [],
         `${cap(houseName(h))} has just one empty cell`,
         `${cellName(empty)} = ${d}`,
-        `Every house must contain 1–9 exactly once. ${cap(houseName(h))} already has every digit except ${d}, and ${cellName(empty)} is its only empty cell.`);
+        `Every house must contain 1–9 exactly once. ${cap(houseName(h))} already has every digit except ${d}, and ${cellName(empty)} is its only empty cell.`,
+        {
+          region: [...h.cells], regionName: houseName(h),
+          nudge: 'Full House — a house with exactly one empty cell. The one missing digit has nowhere else to go.',
+          clue: `Look at ${houseName(h)} — one cell is empty. Count which digit is missing.`,
+        });
     }
   }
   return null;
@@ -199,7 +217,12 @@ function scanHiddenSingle(vals, cand, boxFirst) {
         return mkStep('Hidden Single', boxFirst ? 1.2 : 1.5, [{ i: spot, d }], [],
           `In ${houseName(h)}, digit ${d} fits in only one place`,
           `${cellName(spot)} = ${d}`,
-          `Every other cell in ${houseName(h)} is blocked for ${d} by a ${d} in its row or column.`);
+          `Every other cell in ${houseName(h)} is blocked for ${d} by a ${d} in its row or column.`,
+          {
+            region: [...h.cells], regionName: houseName(h),
+            nudge: 'Hidden Single — one digit fits in only one cell of a house, because peers block everywhere else.',
+            clue: `Scan ${houseName(h)} for a digit that fits in only one spot. ${h.type === 'box' ? 'Check each missing digit against its row and column.' : 'Check each missing digit against the boxes it passes through.'}`,
+          });
       }
     }
   }
@@ -213,7 +236,12 @@ function scanNakedSingle(vals, cand) {
     return mkStep('Naked Single', 2.3, [{ i, d }], [],
       `${cellName(i)} has exactly one candidate left`,
       `${cellName(i)} = ${d}`,
-      `Every other digit already appears in ${cellName(i)}'s row, column, or box — only ${d} can go there.`);
+      `Every other digit already appears in ${cellName(i)}'s row, column, or box — only ${d} can go there.`,
+      {
+        region: [i, ...PEERS[i]], regionName: `${cellName(i)} and its peers`,
+        nudge: 'Naked Single — a cell whose candidates (all digits not yet in its row, column, or box) leave exactly one option.',
+        clue: `Scan the highlighted cells: one of them has a row, column, and box that together contain all eight other digits — it's down to its last candidate.`,
+      });
   }
   return null;
 }
@@ -237,7 +265,12 @@ function scanPointing(vals, cand) {
       return mkStep('Pointing', 2.6, [], elim,
         `In ${houseName(h)}, all candidates for ${d} sit in ${lineName}`,
         `Remove ${d} from the rest of ${lineName}`,
-        `Wherever ${d} goes in ${houseName(h)}, it lands in ${lineName} — so no other cell in ${lineName} can be ${d}.`);
+        `Wherever ${d} goes in ${houseName(h)}, it lands in ${lineName} — so no other cell in ${lineName} can be ${d}.`,
+        {
+          region: [...h.cells], regionName: houseName(h),
+          nudge: "Pointing — inside a box, all spots for one digit line up in a single row or column. That line's digit lives in this box, so the rest of the line is blocked.",
+          clue: `In ${houseName(h)}, pick a digit and see where it can go. One digit's spots all line up in ${lineName}.`,
+        });
     }
   }
   return null;
@@ -261,7 +294,12 @@ function scanClaiming(vals, cand) {
       return mkStep('Claiming', 2.8, [], elim,
         `In ${houseName(h)}, all candidates for ${d} sit in box ${bx + 1}`,
         `Remove ${d} from the rest of box ${bx + 1}`,
-        `${cap(houseName(h))} must place its ${d} inside box ${bx + 1}, so the rest of that box can't be ${d}.`);
+        `${cap(houseName(h))} must place its ${d} inside box ${bx + 1}, so the rest of that box can't be ${d}.`,
+        {
+          region: [...h.cells], regionName: houseName(h),
+          nudge: "Claiming — the reverse of Pointing: in a row or column, all spots for one digit fall inside a single box. The line's digit lives in that box, so the rest of the box is blocked.",
+          clue: `Scan ${houseName(h)}: one digit's possible spots all sit inside box ${bx + 1}. That digit then can't go anywhere else in that box.`,
+        });
     }
   }
   return null;
@@ -285,7 +323,12 @@ function subsetsInHouse(h, vals, cand, size, naked) {
             return mkStep(`Naked ${size === 2 ? 'Pair' : size === 3 ? 'Triple' : 'Quad'}`, [3.0, 3.6, 5.0][size - 2], [], elim,
               `${chosen.map(cellName).join(' and ')} in ${houseName(h)} hold only {${ds.join(',')}}`,
               `Remove ${ds.join(',')} from the rest of ${houseName(h)}`,
-              `Those ${size} ${plural(size, 'cell')} must take the ${size} ${plural(size, 'digit')} {${ds.join(',')}} in some order, so no other cell in ${houseName(h)} can use them.`);
+              `Those ${size} ${plural(size, 'cell')} must take the ${size} ${plural(size, 'digit')} {${ds.join(',')}} in some order, so no other cell in ${houseName(h)} can use them.`,
+              {
+                region: [...h.cells], regionName: houseName(h),
+                nudge: `Naked ${size === 2 ? 'Pair' : size === 3 ? 'Triple' : 'Quad'} — ${size} cells in a house whose combined candidates are exactly ${size} digits. Those digits are locked into those cells.`,
+                clue: `In ${houseName(h)}, look for ${size === 2 ? 'two cells' : size === 3 ? 'three cells' : 'four cells'} that together use only ${size} digits. Those digits are then spoken for.`,
+              });
           }
         }
         return null;
@@ -320,7 +363,12 @@ function subsetsInHouse(h, vals, cand, size, naked) {
             return mkStep(`Hidden ${size === 2 ? 'Pair' : size === 3 ? 'Triple' : 'Quad'}`, [3.4, 4.0, 5.4][size - 2], [], elim,
               `In ${houseName(h)}, digits {${chosen.join(',')}} fit only in ${names}`,
               `Keep only {${chosen.join(',')}} in those cells`,
-              `Those ${size} ${plural(size, 'digit')} must occupy those ${size} ${plural(size, 'cell')} — every other candidate there is impossible.`);
+              `Those ${size} ${plural(size, 'digit')} must occupy those ${size} ${plural(size, 'cell')} — every other candidate there is impossible.`,
+              {
+                region: [...h.cells], regionName: houseName(h),
+                nudge: `Hidden ${size === 2 ? 'Pair' : size === 3 ? 'Triple' : 'Quad'} — ${size} digits in a house that fit only in ${size} cells. Those cells are reserved for them.`,
+                clue: `In ${houseName(h)}, find ${size} digits that only fit in ${size === 2 ? 'two' : size === 3 ? 'three' : 'four'} cells — those cells can hold nothing else.`,
+              });
           }
         }
         return null;
@@ -366,10 +414,17 @@ function scanFish(vals, cand, size) {
           if (!elim.length) return null;
           const baseN = (n) => orient === 0 ? `row ${n + 1}` : `column ${n + 1}`;
           const covN = (n) => orient === 0 ? `column ${n + 1}` : `row ${n + 1}`;
+          const regionCells = [];
+          for (const k of chosen) for (const i of HOUSES[orient === 0 ? k : 9 + k].cells) regionCells.push(i);
           return mkStep(name, weight, [], elim,
             `Digit ${d} forms a ${name} in ${chosen.map(baseN).join(' and ')} (${[...cover].sort().map(covN).join(' and ')})`,
             `Remove ${d} from ${[...cover].sort().map(covN).join(' and ')} outside the base ${orient === 0 ? 'rows' : 'columns'}`,
-            `In each base ${orient === 0 ? 'row' : 'column'}, ${d} can only use the cover ${orient === 0 ? 'columns' : 'rows'} — so those lines' ${d}s belong to the base, and no other cell there can be ${d}.`);
+            `In each base ${orient === 0 ? 'row' : 'column'}, ${d} can only use the cover ${orient === 0 ? 'columns' : 'rows'} — so those lines' ${d}s belong to the base, and no other cell there can be ${d}.`,
+            {
+              region: regionCells, regionName: `${chosen.map(baseN).join(' and ')}`,
+              nudge: `${name} — a fish: in ${size} parallel lines, digit ${d} is restricted to the same ${size} crossing lines. The digit then can't sit elsewhere on those crossing lines.`,
+              clue: `Track digit ${d} across ${chosen.map(baseN).join(' and ')}. Its spots are locked into ${size} crossing lines — what does that block?`,
+            });
         }
         for (let k = start; k < candLines.length; k++) {
           const r = pick(k + 1, [...chosen, candLines[k]]);
@@ -405,7 +460,12 @@ function scanXYWing(vals, cand) {
       return mkStep('XY-Wing', 4.2, [], elim,
         `XY-Wing with pivot ${cellName(p)} {${x},${y}} and pincers ${cellName(w1)} and ${cellName(w2)}`,
         `Remove ${z} from cells seeing both pincers`,
-        `The pivot is ${x} or ${y}. If it's ${x}, the ${y}-wing takes ${z}; if it's ${y}, the ${x}-wing takes ${z}. Either way, any cell seeing both pincers can't be ${z}.`);
+        `The pivot is ${x} or ${y}. If it's ${x}, the ${y}-wing takes ${z}; if it's ${y}, the ${x}-wing takes ${z}. Either way, any cell seeing both pincers can't be ${z}.`,
+        {
+          region: [p, w1, w2], regionName: `${cellName(p)} and its two wings`,
+          nudge: 'XY-Wing — three bivalue cells: a pivot {x,y} and two pincers each sharing one digit with it. Either way the pivot resolves, one pincer takes the spare digit z — so z is blocked in cells seeing both pincers.',
+          clue: `Find a two-candidate cell whose two "wings" each share exactly one candidate with it. Whatever the pivot becomes, one wing must take the leftover digit.`,
+        });
     }
   }
   return null;
@@ -435,7 +495,12 @@ function scanXYZWing(vals, cand) {
       return mkStep('XYZ-Wing', 4.4, [], elim,
         `XYZ-Wing with pivot ${cellName(p)} {${ds.join(',')}} and pincers ${cellName(w1)} and ${cellName(w2)}`,
         `Remove ${z} from cells seeing all three cells`,
-        `The pivot takes one of {${ds.join(',')}}. Whichever it is, ${z} lands in the pivot or a pincer — cells seeing all three can't be ${z}.`);
+        `The pivot takes one of {${ds.join(',')}}. Whichever it is, ${z} lands in the pivot or a pincer — cells seeing all three can't be ${z}.`,
+        {
+          region: [p, w1, w2], regionName: `${cellName(p)} and its two wings`,
+          nudge: 'XYZ-Wing — like an XY-Wing, but the pivot holds three candidates, one shared with each pincer and one (z) common to all three. z always lands in the trio, so cells seeing all three lose z.',
+          clue: `A three-candidate cell with two bivalue wings: the digit shared by all three cells can never sit elsewhere in their sight lines.`,
+        });
     }
   }
   return null;
@@ -525,6 +590,9 @@ export function hintsFor(board, solution, notesMasks = null) {
     out.push({
       tech: 'Mistake', weight: 0, placements: [], eliminations: [],
       wrongCells: wrong,
+      region: wrong.slice(0, 9), regionName: null,
+      nudge: null,
+      clue: null,
       hint: {
         tech: 'Check your entries first',
         where: wrong.length === 1 ? `${cellName(wrong[0])} looks wrong` : `${wrong.length} cells conflict with the solution`,
@@ -555,7 +623,12 @@ export function hintsFor(board, solution, notesMasks = null) {
       out.push(mkStep('Full House', 1.0, [{ i: empty, d }], [],
         `${cap(houseName(h))} has just one empty cell`,
         `${cellName(empty)} = ${d}`,
-        `Every house must contain 1–9 exactly once. ${cap(houseName(h))} already has every digit except ${d}, and ${cellName(empty)} is its only empty cell.`));
+        `Every house must contain 1–9 exactly once. ${cap(houseName(h))} already has every digit except ${d}, and ${cellName(empty)} is its only empty cell.`,
+        {
+          region: [...h.cells], regionName: houseName(h),
+          nudge: 'Full House — a house with exactly one empty cell. The one missing digit has nowhere else to go.',
+          clue: `Look at ${houseName(h)} — one cell is empty. Count which digit is missing.`,
+        }));
     }
   }
 
@@ -569,7 +642,12 @@ export function hintsFor(board, solution, notesMasks = null) {
         out.push(mkStep('Hidden Single', h.type === 'box' ? 1.2 : 1.5, [{ i: spot, d }], [],
           `In ${houseName(h)}, digit ${d} fits in only one place`,
           `${cellName(spot)} = ${d}`,
-          `Every other cell in ${houseName(h)} is blocked for ${d} by a ${d} in its row or column.`));
+          `Every other cell in ${houseName(h)} is blocked for ${d} by a ${d} in its row or column.`,
+          {
+            region: [...h.cells], regionName: houseName(h),
+            nudge: 'Hidden Single — one digit fits in only one cell of a house, because peers block everywhere else.',
+            clue: `Scan ${houseName(h)} for a digit that fits in only one spot. ${h.type === 'box' ? 'Check each missing digit against its row and column.' : 'Check each missing digit against the boxes it passes through.'}`,
+          }));
       }
     }
   }
@@ -581,7 +659,12 @@ export function hintsFor(board, solution, notesMasks = null) {
     out.push(mkStep('Naked Single', 2.3, [{ i, d }], [],
       `${cellName(i)} has exactly one candidate left`,
       `${cellName(i)} = ${d}`,
-      `Every other digit already appears in ${cellName(i)}'s row, column, or box — only ${d} can go there.`));
+      `Every other digit already appears in ${cellName(i)}'s row, column, or box — only ${d} can go there.`,
+      {
+        region: [i, ...PEERS[i]], regionName: `${cellName(i)} and its peers`,
+        nudge: 'Naked Single — a cell whose candidates (all digits not yet in its row, column, or box) leave exactly one option.',
+        clue: `Scan the highlighted cells: one of them has a row, column, and box that together contain all eight other digits — it's down to its last candidate.`,
+      }));
   }
 
   /* dedupe: a full house IS a hidden single, and one cell can be found from
@@ -691,7 +774,12 @@ function trialAndErrorStep(board, solution) {
   return mkStep('Trial & Error', 0, [{ i: best, d }], [],
     `No simple pattern fits here — but ${cellName(best)} can be proven`,
     `${cellName(best)} = ${d}`,
-    `Trying each of ${others.join(', ')} in ${cellName(best)} quickly leads to a contradiction — so ${cellName(best)} = ${d}. Chains and advanced tables would show why; this corner of the puzzle needs them.`);
+    `Trying each of ${others.join(', ')} in ${cellName(best)} quickly leads to a contradiction — so ${cellName(best)} = ${d}. Chains and advanced tables would show why; this corner of the puzzle needs them.`,
+    {
+      region: [best, ...PEERS[best]], regionName: `${cellName(best)} and its peers`,
+      nudge: 'No named pattern fits this position — the digit below is proven by contradiction, not a spotable pattern.',
+      clue: `Among the highlighted cells, find the one with the fewest candidates. Test each option — all but one collapse fast.`,
+    });
 }
 
 function withDigit(grid, i, d) {

@@ -472,10 +472,18 @@ function sheetOpen() {
 }
 
 /* ---------- hints (progressive, Hintoku-style, dismissable) ----------
- * hintsFor() returns EVERY deduction that's valid right now; the sheet
- * cycles through them ("Different hint"). Any board change invalidates
- * the queue — hints can never act on a stale position. */
+ * hintsFor() returns EVERY deduction that's valid right now; tapping the
+ * hint button picks the best one and walks it through LEVELS, one crumb
+ * at a time — the player stops the moment they can finish the logic:
+ *   L1  nudge     — how hard is the easiest move + what kind of thing to look for
+ *   L2  technique — the strategy name + a one-line lesson on how it works
+ *   L3  clue      — where to look (region pulses on the board), no answer
+ *   L4  explain   — the full logic walkthrough (answer + why)
+ * "Different hint" swaps to another valid deduction at the SAME level.
+ * Any board change invalidates the queue — hints can never act on a stale
+ * position. */
 let hintQueue = null; // { steps, idx, fp }
+let hintLevel = 1;    // 1..4 — how far the current hint has been escalated
 
 function boardFingerprint() {
   let s = '';
@@ -508,8 +516,14 @@ function requestHint() {
   const fp = boardFingerprint();
   if (!hintQueue || hintQueue.fp !== fp) {
     hintQueue = { steps: hintsFor(board, solution, notesMasks()), idx: 0, fp };
+    hintLevel = 1;
+  } else if (sheetOpenId === 'sheetHint') {
+    /* keyboard 'h' while the sheet is open = escalate one level */
+    hintLevel = Math.min(4, hintLevel + 1);
   } else {
-    hintQueue.idx = (hintQueue.idx + 1) % hintQueue.steps.length; // re-ask = next hint
+    /* re-ask with the sheet closed = cycle to the next valid hint, fresh escalation */
+    hintQueue.idx = (hintQueue.idx + 1) % hintQueue.steps.length;
+    hintLevel = 1;
   }
   if (!hintQueue.steps.length) {
     showHintSheet({
@@ -527,40 +541,125 @@ function requestHint() {
   showHintSheet(hintQueue.steps[hintQueue.idx], hintQueue.idx, hintQueue.steps.length, fp);
 }
 
+/* difficulty band label for the level-1 nudge */
+function techBand(weight) {
+  if (weight <= 0) return { band: 'Brute logic', tone: 'deep' };
+  if (weight <= 1.5) return { band: 'Beginner', tone: 'easy' };
+  if (weight <= 2.3) return { band: 'Basic', tone: 'easy' };
+  if (weight <= 3.4) return { band: 'Intermediate', tone: 'mid' };
+  if (weight <= 5.4) return { band: 'Advanced', tone: 'hard' };
+  return { band: 'Advanced', tone: 'hard' };
+}
+
+let sheetOpenId = null;
+
 function showHintSheet(step, idx, total, fp) {
-  $('hintTitle').textContent = step.hint.tech;
-  $('hintWhere').textContent = step.hint.where;
-  $('hintWhat').textContent = step.hint.what;
-  let why = step.hint.why;
-  if (step.next?.length) {
-    const trail = step.next.map(s => s.hint.what).join(', then ');
-    why += ` Solving this unlocks: ${trail}.`;
+  const isMistake = !!step.wrongCells?.length;
+  /* mistakes skip escalation — the fix IS the hint */
+  const lvl = isMistake ? 4 : hintLevel;
+
+  /* --- level content --- */
+  let title, body, teach = '';
+  if (isMistake) {
+    title = step.hint.tech;
+    body = `${step.hint.where}. ${step.hint.what}.`;
+    teach = step.hint.why;
+  } else if (lvl === 1) {
+    const { band, tone } = techBand(step.weight);
+    title = 'Where to start';
+    body = `The easiest move available right now is **${band.toLowerCase()}** difficulty.`;
+    teach = step.nudge
+      ? `${step.nudge}`
+      : 'Look for a house or cell that is nearly complete.';
+    if (tone !== 'easy') {
+      teach += ` Not a basic single — scan ${band.toLowerCase()} patterns.`;
+    }
+  } else if (lvl === 2) {
+    title = step.hint.tech;
+    body = step.nudge ?? 'A pattern is available — look for cells that constrain each other.';
+    if (step.regionName) body += ` Somewhere around the ${step.regionName}.`;
+    teach = 'Tap again when you\u2019re ready to narrow down where.';
+  } else if (lvl === 3) {
+    title = step.hint.tech;
+    body = step.clue ?? step.hint.where;
+    teach = 'Still stuck? One more tap walks through the full logic.';
+  } else {
+    title = step.hint.tech;
+    body = `${step.hint.where}. ${step.hint.what}.`;
+    teach = step.hint.why;
+    if (step.next?.length) {
+      const trail = step.next.map(s => s.hint.what).join(', then ');
+      teach += ` Solving this unlocks: ${trail}.`;
+    }
   }
-  $('hintWhy').textContent = why;
-  $('hintKicker').textContent = total > 1 ? `Hint ${idx + 1} of ${total}` : 'Hint';
+
+  $('hintTitle').textContent = title;
+  $('hintWhere').textContent = body.replace(/\*\*/g, '');
+  $('hintWhy').textContent = teach;
+
+  /* --- level dots (progress meter) --- */
+  $('hintKicker').textContent = total > 1
+    ? `Hint ${idx + 1} of ${total} · Level ${lvl}/4`
+    : `Level ${lvl}/4`;
+  renderHintDots(lvl, isMistake);
+
+  /* --- actions --- */
   const alt = $('btnHintAlt');
   alt.hidden = total <= 1;
-  alt.textContent = `Different hint`;
-  alt.onclick = () => { vibrate(4); requestHint(); }; // cycles to the next valid hint
+  alt.textContent = 'Different hint';
+  alt.onclick = () => {
+    vibrate(4);
+    /* swap deduction, stay at the same reveal level */
+    hintQueue.idx = (hintQueue.idx + 1) % hintQueue.steps.length;
+    clearPulse();
+    showHintSheet(hintQueue.steps[hintQueue.idx], hintQueue.idx, hintQueue.steps.length, fp);
+  };
+
   const next = $('btnHintNext');
-  const targets = [
-    ...(step.wrongCells?.slice(0, 8) ?? []),
-    ...(step.placements?.[0] ? [step.placements[0].i] : []),
-    ...(step.eliminations?.slice(0, 8).map(e => e.i) ?? []),
-  ];
-  next.textContent = targets.length ? 'Show me where' : 'Got it';
+  next.textContent = isMistake ? 'Show me where'
+    : lvl < 3 ? 'Tell me more' : 'Show me where to look';
   next.onclick = () => {
-    if (targets.length) {
-      /* close the sheet FIRST so the board is actually visible, then pulse
-       * the target cells and surface a floating pill for the follow-up */
-      closeSheet('sheetHint');
-      pulseHintTargets(targets);
-      showHintFloat(step, fp);
+    if (isMistake || lvl >= 3) {
+      const targets = isMistake || lvl === 4
+        ? [
+            ...(step.wrongCells?.slice(0, 8) ?? []),
+            ...(step.placements?.[0] ? [step.placements[0].i] : []),
+            ...(step.eliminations?.slice(0, 8).map(e => e.i) ?? []),
+          ]
+        : (step.region?.length ? step.region.slice(0, 27) : []);
+      if (targets.length) {
+        /* close the sheet FIRST so the board is actually visible, then pulse
+         * the target cells and surface a floating pill for the follow-up */
+        closeSheet('sheetHint');
+        pulseHintTargets(targets);
+        showHintFloat(step, fp, isMistake || lvl === 4 ? 'apply' : 'more');
+      } else {
+        closeSheet('sheetHint');
+      }
     } else {
-      closeSheet('sheetHint');
+      vibrate(4);
+      hintLevel = lvl + 1;
+      showHintSheet(step, idx, total, fp);
     }
   };
   openSheet('sheetHint');
+}
+
+/* four dots — filled up to the current reveal level */
+function renderHintDots(lvl, isMistake) {
+  const box = $('hintDots');
+  if (!box) return;
+  if (isMistake) { box.innerHTML = ''; return; }
+  let html = '';
+  for (let k = 1; k <= 4; k++) {
+    html += `<span class="hint-dot${k <= lvl ? ' on' : ''}"></span>`;
+  }
+  box.innerHTML = html;
+}
+
+function clearPulse() {
+  document.querySelectorAll('.hint-target').forEach(el => el.classList.remove('hint-target'));
+  clearTimeout(hintPulseTimer);
 }
 
 function pulseHintTargets(targets) {
@@ -571,18 +670,22 @@ function pulseHintTargets(targets) {
   }, 3400);
 }
 
-/* floating pill after "Show me where": offers the final step (place / apply)
- * without covering the board. Sits just above the number pad, auto-hides
- * with the pulse; tap ✕ to dismiss early. Apply is fingerprint-guarded so
- * a pill from an old position can never act on a changed board. */
-function showHintFloat(step, fp) {
+/* floating pill after "Show me where [to look]": level 3 offers "Walk me
+ * through it" (reopen sheet at the full explanation), level 4 offers the
+ * final apply (place / clear) without covering the board. Sits just above
+ * the number pad, auto-hides with the pulse; tap ✕ to dismiss early.
+ * Apply is fingerprint-guarded so a pill from an old position can never
+ * act on a changed board. */
+function showHintFloat(step, fp, mode = 'apply') {
   const float = $('hintFloat');
   const btn = $('hintFloatAction');
   const isPlace = !!step.placements?.length;
   const isMistake = !!step.wrongCells?.length;
-  btn.textContent = isMistake
-    ? (step.wrongCells.length === 1 ? 'Clear it for me' : 'Clear them for me')
-    : isPlace ? 'Place it for me' : 'Apply it';
+  btn.textContent = mode === 'more'
+    ? 'Walk me through it'
+    : isMistake
+      ? (step.wrongCells.length === 1 ? 'Clear it for me' : 'Clear them for me')
+      : isPlace ? 'Place it for me' : 'Apply it';
   /* anchor just above the number pad (fixed positioning, viewport coords) */
   const padTop = $('pad').getBoundingClientRect().top;
   float.style.bottom = `${window.innerHeight - padTop + 10}px`;
@@ -592,7 +695,12 @@ function showHintFloat(step, fp) {
   btn.onclick = () => {
     if (fp !== boardFingerprint()) { hideHintFloat(); return; }
     hideHintFloat();
-    applyHint(step);
+    if (mode === 'more') {
+      hintLevel = 4; // full walkthrough next
+      showHintSheet(step, hintQueue.idx, hintQueue.steps.length, fp);
+    } else {
+      applyHint(step);
+    }
   };
   $('hintFloatClose').onclick = () => hideHintFloat();
   clearTimeout(hintFloatTimer);
@@ -800,9 +908,11 @@ function checkWin() {
 function openSheet(id) {
   pauseGame();
   $(id).hidden = false;
+  sheetOpenId = id;
 }
 function closeSheet(id) {
   $(id).hidden = true;
+  if (id === sheetOpenId) sheetOpenId = null;
   if (!sheetOpen()) resumeGame();
 }
 function bindOverlayClose(id) {

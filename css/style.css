@@ -819,8 +819,10 @@ input[type="range"]::-moz-range-thumb {
 
 /* hint sheet */
 .hint-kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); display: block; margin-bottom: 6px; }
+.hint-dots { display: flex; gap: 5px; margin-bottom: 10px; }
+.hint-dot { width: 22px; height: 4px; border-radius: 2px; background: var(--grid-line); transition: background 0.25s var(--ease-standard); }
+.hint-dot.on { background: var(--accent); }
 .hint-where { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
-.hint-what { font-size: 15px; color: var(--ink-2); margin-bottom: 12px; }
 .hint-why { font-size: 14px; color: var(--ink-2); line-height: 1.55; padding: 14px; background: var(--paper); border-radius: 12px; }
 
 /* win sheet */
