@@ -28,6 +28,7 @@ let currentLabel = 'Easy';
 let currentSE = null;
 let settings = { theme: 'auto', cleanup: true, advance: true };
 let lastTap = { i: -1, t: 0, note: 0 };
+let padTap = { d: 0, t: 0, wasArmed: false };
 let hintPulseTimer = null;
 let hintFloatTimer = null;
 let rainTimer = null;
@@ -323,6 +324,19 @@ function onCellTap(i, noteDigit = 0) {
 
 function onPad(d) {
   if (won) return;
+  const now = Date.now();
+  /* double-tap a number card: arm that digit so it can be hammered into
+   * empty cells (mirrors double-tap-to-arm on the board). A pair that
+   * started armed disarms instead. If the first tap placed the digit, the
+   * placement stands — this second tap only arms. */
+  if (padTap.d === d && now - padTap.t < 320) {
+    selDigit = padTap.wasArmed ? 0 : d;
+    vibrate(selDigit ? 8 : 5);
+    padTap = { d: 0, t: 0, wasArmed: false };
+    render();
+    return;
+  }
+  padTap = { d, t: now, wasArmed: selDigit === d };
   if (selected >= 0 && !given[selected]) {
     if (notesMode) toggleNote(selected, d);
     else place(selected, d);
@@ -789,6 +803,18 @@ function pushHistoryMulti() {
   history.push({ i: -1, val: 0, notes: null, multi: notes.map(s => [...s]) });
 }
 
+/* clear every pencil guess off the board — the opposite wing of recompute,
+ * same undo semantics (one multi-entry restores the whole notescape) */
+function clearNotes() {
+  if (won) return;
+  if (!notes.some(s => s.size)) return;
+  pushHistoryMulti();
+  for (let i = 0; i < 81; i++) notes[i].clear();
+  render();
+  vibrate([6, 30, 6]);
+  save();
+}
+
 
 /* ---------- fx: confetti + celebrations (canvas, non-blocking) ---------- */
 const fxCanvas = $('fx');
@@ -994,6 +1020,7 @@ function applyPuzzle(result) {
   selected = -1;
   selDigit = 0;
   lastTap = { i: -1, t: 0, note: 0 };
+  padTap = { d: 0, t: 0, wasArmed: false };
   notesMode = false;
   for (const b of [$('btnNotes'), document.getElementById('padNotes')]) {
     if (!b) continue;
@@ -1039,7 +1066,15 @@ async function restoreSave(sd) {
   board = Uint8Array.from(sd.board ?? []);
   solution = Uint8Array.from(sd.solution ?? []);
   notes = (sd.notes ?? []).map(a => new Set(a));
-  history = (sd.history ?? []).map(h => ({ i: h.i, val: h.val, notes: [...(h.notes ?? [])] }));
+  /* keep multi (recompute/clear) and scrubbed entries intact so undo still
+   * works after a refresh — dropping them made those undos silently no-op */
+  history = (sd.history ?? []).map(h => ({
+    i: h.i,
+    val: h.val,
+    notes: h.notes ? [...h.notes] : null,
+    multi: h.multi ? h.multi.map(a => [...a]) : undefined,
+    scrubbed: h.scrubbed ? { d: h.scrubbed.d, cells: [...(h.scrubbed.cells ?? [])] } : undefined,
+  }));
   elapsed = sd.elapsed | 0;
   mistakes = sd.mistakes | 0;
   hintsUsed = sd.hintsUsed | 0;
@@ -1109,6 +1144,10 @@ function wire() {
   $('miRecompute').addEventListener('click', () => {
     closeSheet('sheetMenu');
     setTimeout(recomputeNotes, 220); /* let the sheet close first */
+  });
+  $('miClearNotes').addEventListener('click', () => {
+    closeSheet('sheetMenu');
+    setTimeout(clearNotes, 220); /* let the sheet close first */
   });
   $('btnMenu').addEventListener('click', openMenu);
   $('btnResume').addEventListener('click', resumeGame);
