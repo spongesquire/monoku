@@ -133,6 +133,13 @@ function buildBoard() {
   const b = $('board');
   b.innerHTML = '';
   cells.length = 0;
+  /* SVG overlay for chain techniques (X-Chain / XY-Chain / AIC): strong
+   * links draw solid, weak links dashed, endpoints get dots. Purely visual,
+   * never intercepts taps. */
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.id = 'chainLayer';
+  svg.setAttribute('aria-hidden', 'true');
+  b.appendChild(svg);
   for (let i = 0; i < 81; i++) {
     const c = document.createElement('button');
     c.className = 'cell';
@@ -555,14 +562,15 @@ function requestHint() {
   showHintSheet(hintQueue.steps[hintQueue.idx], hintQueue.idx, hintQueue.steps.length, fp);
 }
 
-/* difficulty band label for the level-1 nudge */
+/* difficulty band label for the level-1 nudge — tiers follow the hint
+ * ladder (chains and coloring sit above 5.7) */
 function techBand(weight) {
   if (weight <= 0) return { band: 'Brute logic', tone: 'deep' };
   if (weight <= 1.5) return { band: 'Beginner', tone: 'easy' };
   if (weight <= 2.3) return { band: 'Basic', tone: 'easy' };
   if (weight <= 3.4) return { band: 'Intermediate', tone: 'mid' };
-  if (weight <= 5.4) return { band: 'Advanced', tone: 'hard' };
-  return { band: 'Advanced', tone: 'hard' };
+  if (weight <= 5.7) return { band: 'Advanced', tone: 'hard' };
+  return { band: 'Expert', tone: 'hard' };
 }
 
 let sheetOpenId = null;
@@ -640,12 +648,12 @@ function showHintSheet(step, idx, total, fp) {
             ...(step.placements?.[0] ? [step.placements[0].i] : []),
             ...(step.eliminations?.slice(0, 8).map(e => e.i) ?? []),
           ]
-        : (step.region?.length ? step.region.slice(0, 27) : []);
+        : (step.region?.length ? step.region.slice(0, 27) : (step.pattern ?? []));
       if (targets.length) {
         /* close the sheet FIRST so the board is actually visible, then pulse
          * the target cells and surface a floating pill for the follow-up */
         closeSheet('sheetHint');
-        pulseHintTargets(targets);
+        pulseHintTargets(targets, step);
         showHintFloat(step, fp, isMistake || lvl === 4 ? 'apply' : 'more');
       } else {
         closeSheet('sheetHint');
@@ -672,16 +680,90 @@ function renderHintDots(lvl, isMistake) {
 }
 
 function clearPulse() {
-  document.querySelectorAll('.hint-target').forEach(el => el.classList.remove('hint-target'));
+  document.querySelectorAll('.hint-target, .hint-pattern').forEach(el => el.classList.remove('hint-target', 'hint-pattern'));
+  clearChainArrows();
   clearTimeout(hintPulseTimer);
 }
 
-function pulseHintTargets(targets) {
+/* pulse actionable cells hard; pattern/support cells softly; draw chain
+ * arrows when the step carries one (X-Chain / XY-Chain / AIC walkthroughs) */
+function pulseHintTargets(targets, step = null) {
   for (const i of targets) cells[i].classList.add('hint-target');
+  for (const i of step?.pattern ?? []) {
+    if (!cells[i].classList.contains('hint-target')) cells[i].classList.add('hint-pattern');
+  }
+  if (step?.chain) drawChainArrows(step.chain);
   clearTimeout(hintPulseTimer);
   hintPulseTimer = setTimeout(() => {
-    document.querySelectorAll('.hint-target').forEach(el => el.classList.remove('hint-target'));
+    document.querySelectorAll('.hint-target, .hint-pattern').forEach(el => el.classList.remove('hint-target', 'hint-pattern'));
+    clearChainArrows();
   }, 3400);
+}
+
+/* ---------- chain visuals ----------
+ * The board is a grid of buttons; the overlay SVG uses board-relative pixel
+ * coordinates measured from live cell rects, so it survives resize by being
+ * redrawn (arrows live only for the pulse window anyway). */
+function drawChainArrows(chain) {
+  const svg = $('chainLayer');
+  if (!svg || !chain?.nodes?.length) return;
+  const boardRect = $('board').getBoundingClientRect();
+  svg.setAttribute('viewBox', `0 0 ${boardRect.width} ${boardRect.height}`);
+  svg.innerHTML = `
+    <defs>
+      <marker id="chainArrowStrong" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" class="chain-arrow-strong"/>
+      </marker>
+      <marker id="chainArrowWeak" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" class="chain-arrow-weak"/>
+      </marker>
+    </defs>`;
+  const center = (i) => {
+    const r = cells[i].getBoundingClientRect();
+    return { x: r.left - boardRect.left + r.width / 2, y: r.top - boardRect.top + r.height / 2 };
+  };
+  const NS = 'http://www.w3.org/2000/svg';
+  const nodes = chain.nodes;
+  for (let k = 1; k < nodes.length; k++) {
+    const a = center(nodes[k - 1].i), b2 = center(nodes[k].i);
+    const strong = chain.links[k - 1];
+    /* shorten so the arrowhead lands on the cell edge, not the center */
+    const dx = b2.x - a.x, dy = b2.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const cellR = Math.min(cells[nodes[k].i].getBoundingClientRect().width / 2 - 2, 22);
+    const ex = b2.x - dx / len * cellR, ey = b2.y - dy / len * cellR;
+    const line = document.createElementNS(NS, 'line');
+    line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
+    line.setAttribute('x2', ex); line.setAttribute('y2', ey);
+    line.setAttribute('class', strong ? 'chain-strong' : 'chain-weak');
+    line.setAttribute('marker-end', `url(#${strong ? 'chainArrowStrong' : 'chainArrowWeak'})`);
+    svg.appendChild(line);
+  }
+  nodes.forEach((n, k) => {
+    const p = center(n.i);
+    const dot = document.createElementNS(NS, 'circle');
+    dot.setAttribute('cx', p.x); dot.setAttribute('cy', p.y);
+    dot.setAttribute('r', 4);
+    dot.setAttribute('class', k === 0 || k === nodes.length - 1 ? 'chain-node chain-end' : 'chain-node');
+    dot.setAttribute('data-d', n.d);
+    svg.appendChild(dot);
+  });
+  /* digit labels at the endpoints make the chain readable at a glance */
+  nodes.forEach((n, k) => {
+    if (k !== 0 && k !== nodes.length - 1) return;
+    const p = center(n.i);
+    const label = document.createElementNS(NS, 'text');
+    label.setAttribute('x', p.x); label.setAttribute('y', p.y - 8);
+    label.setAttribute('class', 'chain-label');
+    label.setAttribute('text-anchor', 'middle');
+    label.textContent = n.d;
+    svg.appendChild(label);
+  });
+}
+
+function clearChainArrows() {
+  const svg = $('chainLayer');
+  if (svg) svg.innerHTML = '';
 }
 
 /* floating pill after "Show me where [to look]": level 3 offers "Walk me
@@ -746,7 +828,8 @@ function applyHint(step) {
   } else if (step.eliminations?.length) {
     for (const e of step.eliminations) notes[e.i].delete(e.d);
   }
-  document.querySelectorAll('.hint-target').forEach(el => el.classList.remove('hint-target'));
+  document.querySelectorAll('.hint-target, .hint-pattern').forEach(el => el.classList.remove('hint-target', 'hint-pattern'));
+  clearChainArrows();
   hideHintFloat();
   closeSheet('sheetHint');
   checkWin();
