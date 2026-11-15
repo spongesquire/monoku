@@ -158,6 +158,36 @@ test('hintsFor: notes suppress only eliminations at cells the player notes', () 
   }
 });
 
+test('stories: every hint carries a board walkthrough ending on its targets', () => {
+  /* the UI steps through story[].hi on the board; the LAST step must light
+   * up every actionable cell (placement / eliminations), and chain stories
+   * walk one link per step plus intro and conclusion */
+  let checked = 0;
+  for (const { puz, sol } of deepPuzzles(150, 66000, 23)) {
+    const g = grade(puz, { chains: true, chainBudgetMs: 150 });
+    for (const s of g.steps) {
+      checked++;
+      assert.ok(Array.isArray(s.story) && s.story.length >= 2, `${s.tech} has no story`);
+      const last = s.story[s.story.length - 1];
+      const targets = [
+        ...(s.placements ?? []).map(p => p.i),
+        ...(s.eliminations ?? []).map(e => e.i),
+      ];
+      for (const t of targets) {
+        assert.ok(last.hi.includes(t), `${s.tech} final step must highlight target cell ${t}`);
+      }
+      for (const st of s.story) {
+        assert.ok(typeof st.t === 'string' && st.t.length > 3, `${s.tech} story step missing text`);
+        for (const i of st.hi ?? []) assert.ok(i >= 0 && i < 81, `${s.tech} story highlight out of range`);
+      }
+      if (s.chain) {
+        assert.equal(s.story.length, s.chain.links.length + 2, `${s.tech} story = intro + per-link + conclusion`);
+      }
+    }
+  }
+  assert.ok(checked > 500, `expected many steps, got ${checked}`);
+});
+
 test('hintsFor: technique hints lead to the next placement (fully-noted boards)', () => {
   /* "Recompute notes" play style: every candidate noted. A stuck player
    * asks "which digit goes down next?" — every technique hint must show

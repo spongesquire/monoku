@@ -641,9 +641,17 @@ function showHintSheet(step, idx, total, fp) {
   };
 
   const next = $('btnHintNext');
+  const story = step.story;
   next.textContent = isMistake ? 'Show me where'
+    : lvl === 4 && story?.length > 1 ? `Walk me through it · ${story.length} steps`
     : lvl < 3 ? 'Tell me more' : 'Show me where to look';
   next.onclick = () => {
+    if (!isMistake && lvl === 4 && story?.length > 1) {
+      /* full walkthrough: step through the deduction on the board itself */
+      closeSheet('sheetHint');
+      startHintWalk(step, fp);
+      return;
+    }
     if (isMistake || lvl >= 3) {
       const targets = isMistake || lvl === 4
         ? [
@@ -706,8 +714,9 @@ function pulseHintTargets(targets, step = null) {
 /* ---------- chain visuals ----------
  * The board is a grid of buttons; the overlay SVG uses board-relative pixel
  * coordinates measured from live cell rects, so it survives resize by being
- * redrawn (arrows live only for the pulse window anyway). */
-function drawChainArrows(chain) {
+ * redrawn (arrows live only for the pulse window anyway). upTo limits the
+ * drawn links for the step-through walker (intro step = no arrows yet). */
+function drawChainArrows(chain, upTo = Infinity) {
   const svg = $('chainLayer');
   if (!svg || !chain?.nodes?.length) return;
   const boardRect = $('board').getBoundingClientRect();
@@ -727,7 +736,8 @@ function drawChainArrows(chain) {
   };
   const NS = 'http://www.w3.org/2000/svg';
   const nodes = chain.nodes;
-  for (let k = 1; k < nodes.length; k++) {
+  const linksToDraw = Math.min(Math.max(0, upTo), chain.links.length);
+  for (let k = 1; k <= linksToDraw; k++) {
     const a = center(nodes[k - 1].i), b2 = center(nodes[k].i);
     const strong = chain.links[k - 1];
     /* shorten so the arrowhead lands on the cell edge, not the center */
@@ -742,31 +752,90 @@ function drawChainArrows(chain) {
     line.setAttribute('marker-end', `url(#${strong ? 'chainArrowStrong' : 'chainArrowWeak'})`);
     svg.appendChild(line);
   }
-  nodes.forEach((n, k) => {
-    const p = center(n.i);
+  /* dots for the nodes involved so far; endpoint labels once fully drawn */
+  const visible = Math.min(linksToDraw + 1, nodes.length);
+  for (let k = 0; k < visible; k++) {
+    const p = center(nodes[k].i);
     const dot = document.createElementNS(NS, 'circle');
     dot.setAttribute('cx', p.x); dot.setAttribute('cy', p.y);
     dot.setAttribute('r', 4);
     dot.setAttribute('class', k === 0 || k === nodes.length - 1 ? 'chain-node chain-end' : 'chain-node');
-    dot.setAttribute('data-d', n.d);
+    dot.setAttribute('data-d', nodes[k].d);
     svg.appendChild(dot);
-  });
-  /* digit labels at the endpoints make the chain readable at a glance */
-  nodes.forEach((n, k) => {
-    if (k !== 0 && k !== nodes.length - 1) return;
-    const p = center(n.i);
-    const label = document.createElementNS(NS, 'text');
-    label.setAttribute('x', p.x); label.setAttribute('y', p.y - 8);
-    label.setAttribute('class', 'chain-label');
-    label.setAttribute('text-anchor', 'middle');
-    label.textContent = n.d;
-    svg.appendChild(label);
-  });
+  }
+  if (linksToDraw === chain.links.length) {
+    nodes.forEach((n, k) => {
+      if (k !== 0 && k !== nodes.length - 1) return;
+      const p = center(n.i);
+      const label = document.createElementNS(NS, 'text');
+      label.setAttribute('x', p.x); label.setAttribute('y', p.y - 8);
+      label.setAttribute('class', 'chain-label');
+      label.setAttribute('text-anchor', 'middle');
+      label.textContent = n.d;
+      svg.appendChild(label);
+    });
+  }
 }
 
 function clearChainArrows() {
   const svg = $('chainLayer');
   if (svg) svg.innerHTML = '';
+}
+
+/* ---------- board walkthrough (Hintoku-style story steps) ----------
+ * Level 4 walks the deduction across the board: each engine story step
+ * highlights its cells (chains grow arrow by arrow), the float pill carries
+ * the step text, and the last step offers the action. Fingerprint-guarded
+ * like every hint action. */
+let hintWalk = null; // { step, fp, k }
+
+function startHintWalk(step, fp) {
+  hintWalk = { step, fp, k: 0 };
+  hintWalkRender();
+}
+
+function hintWalkRender() {
+  if (!hintWalk) return;
+  const { step, fp, k } = hintWalk;
+  const story = step.story;
+  document.querySelectorAll('.hint-target, .hint-pattern').forEach(el => el.classList.remove('hint-target', 'hint-pattern'));
+  for (const i of story[k].hi ?? []) cells[i]?.classList.add('hint-target');
+  clearChainArrows();
+  if (step.chain) drawChainArrows(step.chain, k); // story step k shows links 1..k
+
+  const float = $('hintFloat');
+  const btn = $('hintFloatAction');
+  const txt = $('hintFloatText');
+  const last = k === story.length - 1;
+  txt.hidden = false;
+  txt.textContent = `${k + 1}/${story.length} ${story[k].t}`;
+  btn.textContent = last
+    ? (step.wrongCells?.length ? 'Clear them for me' : step.placements?.length ? 'Place it for me' : 'Apply it')
+    : 'Next step';
+  const padTop = $('pad').getBoundingClientRect().top;
+  float.style.bottom = `${window.innerHeight - padTop + 10}px`;
+  float.hidden = false;
+  requestAnimationFrame(() => float.classList.add('show'));
+  btn.onclick = () => {
+    if (fp !== boardFingerprint()) { endHintWalk(); return; }
+    if (last) {
+      const s = hintWalk?.step;
+      endHintWalk();
+      if (s) applyHint(s);
+    } else {
+      hintWalk.k++;
+      hintWalkRender();
+    }
+  };
+  $('hintFloatClose').onclick = () => endHintWalk();
+  clearTimeout(hintFloatTimer); // no auto-hide mid-walk
+  clearTimeout(hintPulseTimer); // highlights persist until the next step
+}
+
+function endHintWalk() {
+  hintWalk = null;
+  clearPulse();
+  hideHintFloat();
 }
 
 /* floating pill after "Show me where [to look]": level 3 offers "Walk me
@@ -778,6 +847,8 @@ function clearChainArrows() {
 function showHintFloat(step, fp, mode = 'apply') {
   const float = $('hintFloat');
   const btn = $('hintFloatAction');
+  const txt = $('hintFloatText');
+  txt.hidden = true; // text line is only for the board walker
   const isPlace = !!step.placements?.length;
   const isMistake = !!step.wrongCells?.length;
   btn.textContent = mode === 'more'
@@ -817,6 +888,7 @@ function hideHintFloat() {
 
 function applyHint(step) {
   hintsUsed++;
+  hintWalk = null;
   if (step.wrongCells?.length) {
     /* mistake hint: clear the wrong entries (each undoable) */
     for (const i of step.wrongCells) erase(i);

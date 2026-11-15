@@ -190,6 +190,9 @@ function mkStep(tech, weight, placements, eliminations, where, what, why, extra 
     level: extra.level ?? levelForWeight(weight),
     pattern: extra.pattern ?? null,
     chain: extra.chain ?? null,
+    /* board walkthrough: ordered steps [{ t, hi:[cells] }] — the UI pulses
+     * hi and (for chains) advances arrows as the player steps through */
+    story: extra.story ?? null,
     hint: { tech, where, what, why },
   };
 }
@@ -209,6 +212,10 @@ function scanFullHouse(vals, cand) {
         `Every house must contain 1–9 exactly once. ${cap(houseName(h))} already has every digit except ${d}, and ${cellName(empty)} is its only empty cell.`,
         {
           region: [...h.cells], regionName: houseName(h),
+          story: [
+            { t: `${cap(houseName(h))} is missing exactly one digit.`, hi: [...h.cells] },
+            { t: `${cellName(empty)} is its only empty cell — it takes the missing ${d}.`, hi: [empty] },
+          ],
           nudge: 'Full House — a house with exactly one empty cell. The one missing digit has nowhere else to go.',
           clue: `Look at ${houseName(h)} — one cell is empty. Count which digit is missing.`,
         });
@@ -231,6 +238,10 @@ function scanHiddenSingle(vals, cand, boxFirst) {
           `Every other cell in ${houseName(h)} is blocked for ${d} by a ${d} in its row or column.`,
           {
             region: [...h.cells], regionName: houseName(h),
+            story: [
+              { t: `Scan ${houseName(h)} for ${d} — where can it still go?`, hi: [...h.cells] },
+              { t: `Every cell but ${cellName(spot)} is blocked — ${d} belongs there.`, hi: [spot] },
+            ],
             nudge: 'Hidden Single — one digit fits in only one cell of a house, because peers block everywhere else.',
             clue: `Scan ${houseName(h)} for a digit that fits in only one spot. ${h.type === 'box' ? 'Check each missing digit against its row and column.' : 'Check each missing digit against the boxes it passes through.'}`,
           });
@@ -250,6 +261,10 @@ function scanNakedSingle(vals, cand) {
       `Every other digit already appears in ${cellName(i)}'s row, column, or box — only ${d} can go there.`,
       {
         region: [i, ...PEERS[i]], regionName: `${cellName(i)} and its peers`,
+        story: [
+          { t: `Look at ${cellName(i)} and everything it sees.`, hi: [i, ...PEERS[i]] },
+          { t: `Eight different digits already reach it — only ${d} is left.`, hi: [i] },
+        ],
         nudge: 'Naked Single — a cell whose candidates (all digits not yet in its row, column, or box) leave exactly one option.',
         clue: `Scan the highlighted cells: one of them has a row, column, and box that together contain all eight other digits — it's down to its last candidate.`,
       });
@@ -279,6 +294,11 @@ function scanPointing(vals, cand) {
         `Wherever ${d} goes in ${houseName(h)}, it lands in ${lineName} — so no other cell in ${lineName} can be ${d}.`,
         {
           region: [...h.cells], regionName: houseName(h),
+          story: [
+            { t: `Inside ${houseName(h)}, ${d} fits only in ${lineName}.`, hi: spots },
+            { t: `So ${lineName}'s ${d} must come from this box.`, hi: [...spots, ...HOUSES[line.t === 'row' ? line.v : 9 + line.v].cells] },
+            { t: `Every other ${d} on ${lineName} can go.`, hi: elim.map(e => e.i) },
+          ],
           nudge: "Pointing — inside a box, all spots for one digit line up in a single row or column. That line's digit lives in this box, so the rest of the line is blocked.",
           clue: `In ${houseName(h)}, pick a digit and see where it can go. One digit's spots all line up in ${lineName}.`,
         });
@@ -308,6 +328,11 @@ function scanClaiming(vals, cand) {
         `${cap(houseName(h))} must place its ${d} inside box ${bx + 1}, so the rest of that box can't be ${d}.`,
         {
           region: [...h.cells], regionName: houseName(h),
+          story: [
+            { t: `On ${houseName(h)}, ${d} fits only inside box ${bx + 1}.`, hi: spots },
+            { t: `So box ${bx + 1}'s ${d} is used by ${houseName(h)}.`, hi: [...spots, ...HOUSES[18 + bx].cells] },
+            { t: `Every other ${d} in box ${bx + 1} can go.`, hi: elim.map(e => e.i) },
+          ],
           nudge: "Claiming — the reverse of Pointing: in a row or column, all spots for one digit fall inside a single box. The line's digit lives in that box, so the rest of the box is blocked.",
           clue: `Scan ${houseName(h)}: one digit's possible spots all sit inside box ${bx + 1}. That digit then can't go anywhere else in that box.`,
         });
@@ -337,6 +362,11 @@ function subsetsInHouse(h, vals, cand, size, naked) {
               `Those ${size} ${plural(size, 'cell')} must take the ${size} ${plural(size, 'digit')} {${ds.join(',')}} in some order, so no other cell in ${houseName(h)} can use them.`,
               {
                 region: [...h.cells], regionName: houseName(h),
+                story: [
+                  { t: `These ${size} cells in ${houseName(h)} hold only {${ds.join(',')}} between them.`, hi: [...chosen] },
+                  { t: `Those ${size} digits are spoken for — nothing else in ${houseName(h)} can use them.`, hi: [...h.cells] },
+                  { t: `Strip {${ds.join(',')}} from the rest of ${houseName(h)}.`, hi: elim.map(e => e.i) },
+                ],
                 nudge: `Naked ${size === 2 ? 'Pair' : size === 3 ? 'Triple' : 'Quad'} — ${size} cells in a house whose combined candidates are exactly ${size} digits. Those digits are locked into those cells.`,
                 clue: `In ${houseName(h)}, look for ${size === 2 ? 'two cells' : size === 3 ? 'three cells' : 'four cells'} that together use only ${size} digits. Those digits are then spoken for.`,
               });
@@ -377,6 +407,11 @@ function subsetsInHouse(h, vals, cand, size, naked) {
               `Those ${size} ${plural(size, 'digit')} must occupy those ${size} ${plural(size, 'cell')} — every other candidate there is impossible.`,
               {
                 region: [...h.cells], regionName: houseName(h),
+                story: [
+                  { t: `In ${houseName(h)}, {${chosen.join(',')}} fit only in ${names}.`, hi: [...unionCells] },
+                  { t: `Those ${size} cells are reserved for {${chosen.join(',')}}.`, hi: [...h.cells] },
+                  { t: `Every other candidate there can go.`, hi: elim.map(e => e.i) },
+                ],
                 nudge: `Hidden ${size === 2 ? 'Pair' : size === 3 ? 'Triple' : 'Quad'} — ${size} digits in a house that fit only in ${size} cells. Those cells are reserved for them.`,
                 clue: `In ${houseName(h)}, find ${size} digits that only fit in ${size === 2 ? 'two' : size === 3 ? 'three' : 'four'} cells — those cells can hold nothing else.`,
               });
@@ -433,6 +468,11 @@ function scanFish(vals, cand, size) {
             `In each base ${orient === 0 ? 'row' : 'column'}, ${d} can only use the cover ${orient === 0 ? 'columns' : 'rows'} — so those lines' ${d}s belong to the base, and no other cell there can be ${d}.`,
             {
               region: regionCells, regionName: `${chosen.map(baseN).join(' and ')}`,
+              story: [
+                { t: `Track ${d} through ${chosen.map(baseN).join(' and ')} — each has only ${size} spots.`, hi: [...new Set([...chosen.flatMap(k => HOUSES[orient === 0 ? k : 9 + k].cells.filter(i => !vals[i] && (cand[i] & b)))])] },
+                { t: `All those spots sit on ${[...cover].sort().map(covN).join(' and ')} — those lines' ${d}s belong to the base.`, hi: [...new Set([...cover].flatMap(c => (orient === 0 ? HOUSES[9 + c] : HOUSES[c]).cells))] },
+                { t: `So ${d} can't sit elsewhere on those ${orient === 0 ? 'columns' : 'rows'}.`, hi: elim.map(e => e.i) },
+              ],
               nudge: `${name} — a fish: in ${size} parallel lines, digit ${d} is restricted to the same ${size} crossing lines. The digit then can't sit elsewhere on those crossing lines.`,
               clue: `Track digit ${d} across ${chosen.map(baseN).join(' and ')}. Its spots are locked into ${size} crossing lines — what does that block?`,
             });
@@ -474,6 +514,11 @@ function scanXYWing(vals, cand) {
         `The pivot is ${x} or ${y}. If it's ${x}, the ${y}-wing takes ${z}; if it's ${y}, the ${x}-wing takes ${z}. Either way, any cell seeing both pincers can't be ${z}.`,
         {
           region: [p, w1, w2], regionName: `${cellName(p)} and its two wings`,
+          story: [
+            { t: `Pivot ${cellName(p)} holds {${x},${y}}; wings ${cellName(w1)} and ${cellName(w2)} each share one of them.`, hi: [p, w1, w2] },
+            { t: `Pivot becomes ${x} or ${y} — either way one wing must take ${z}.`, hi: [w1, w2] },
+            { t: `Cells seeing both wings can't be ${z}.`, hi: elim.map(e => e.i) },
+          ],
           nudge: 'XY-Wing — three bivalue cells: a pivot {x,y} and two pincers each sharing one digit with it. Either way the pivot resolves, one pincer takes the spare digit z — so z is blocked in cells seeing both pincers.',
           clue: `Find a two-candidate cell whose two "wings" each share exactly one candidate with it. Whatever the pivot becomes, one wing must take the leftover digit.`,
         });
@@ -509,6 +554,11 @@ function scanXYZWing(vals, cand) {
         `The pivot takes one of {${ds.join(',')}}. Whichever it is, ${z} lands in the pivot or a pincer — cells seeing all three can't be ${z}.`,
         {
           region: [p, w1, w2], regionName: `${cellName(p)} and its two wings`,
+          story: [
+            { t: `Pivot ${cellName(p)} holds {${ds.join(',')}}; wings ${cellName(w1)} and ${cellName(w2)} sit inside its reach.`, hi: [p, w1, w2] },
+            { t: `Whichever of {${ds.join(',')}} the pivot takes, ${z} lands in the trio.`, hi: [p, w1, w2] },
+            { t: `Cells seeing all three can't be ${z}.`, hi: elim.map(e => e.i) },
+          ],
           nudge: 'XYZ-Wing — like an XY-Wing, but the pivot holds three candidates, one shared with each pincer and one (z) common to all three. z always lands in the trio, so cells seeing all three lose z.',
           clue: `A three-candidate cell with two bivalue wings: the digit shared by all three cells can never sit elsewhere in their sight lines.`,
         });
@@ -556,9 +606,10 @@ function scanSkyscraper(vals, cand) {
           byCross.get(c).push(i);
         }
         if (byCross.size !== 3) continue;
-        let roof1 = -1, roof2 = -1;
+        let roof1 = -1, roof2 = -1, baseCells = [];
         for (const arr of byCross.values()) {
           if (arr.length === 1) { if (roof1 < 0) roof1 = arr[0]; else roof2 = arr[0]; }
+          else baseCells = arr;
         }
         if (roof2 < 0) continue; // need exactly one shared cross line (the base)
         const elim = [];
@@ -575,6 +626,12 @@ function scanSkyscraper(vals, cand) {
           {
             region: cells, regionName: `${ln(l1)} and ${ln(l2)}`,
             level: 4, pattern: cells,
+            story: [
+              { t: `${d} has exactly two spots in ${ln(l1)} and two in ${ln(l2)}.`, hi: cells },
+              { t: `Both pairs share one crossing line — the base.`, hi: baseCells },
+              { t: `The two unshared ends are the roof — one of them must be ${d}.`, hi: [roof1, roof2] },
+              { t: `So cells seeing both roof cells lose ${d}.`, hi: elim.map(e => e.i) },
+            ],
             nudge: 'Skyscraper — two parallel lines where a digit has exactly two spots each, aligned so they share one crossing line. The two outer ends (the "roof") can never both be false.',
             clue: `Follow digit ${d} through ${ln(l1)} and ${ln(l2)} — each has exactly two spots, sharing one crossing line. Watch the two unshared ends.`,
           });
@@ -637,6 +694,12 @@ function scanFinnedFish(vals, cand, size) {
             {
               region: baseCells, regionName: chosen.map(ln).join(' and '),
               level: 4, pattern: [...baseCells, ...finCells],
+              story: [
+                { t: `Track ${d} down ${chosen.map(ln).join(' and ')}.`, hi: baseCells },
+                { t: `All but the fin${finCells.length === 2 ? 's' : ''} fall on ${size} shared crossing lines — a fish shape.`, hi: baseCells.filter(i => !finCells.includes(i)) },
+                { t: `The fin${finCells.length === 2 ? 's' : ''} ${finCells.map(cellName).join(' and ')} stay${finCells.length === 2 ? '' : 's'} inside box ${finBox + 1}.`, hi: finCells },
+                { t: `Fish or fin, ${d} lands in box ${finBox + 1} on a cover line — remove it elsewhere in that box.`, hi: elim.map(e => e.i) },
+              ],
               nudge: `${name} — a fish whose corner cells ${finCells.length === 1 ? 'has one fin' : 'have two fins'}: extra candidates confined to a single box. The fish still bites inside that box only.`,
               clue: `Track ${d} along ${chosen.map(ln).join(' and ')}. All but ${finCells.length === 1 ? 'one spot' : 'two spots'} fall on ${size} shared crossing lines — the exception${finCells.length === 1 ? '' : 's'} share${finCells.length === 1 ? 's' : ''} one box.`,
             });
@@ -689,6 +752,12 @@ function scanTwoStringKite(vals, cand) {
               {
                 region: [A, B, C, D], regionName: `the ${d} links through ${ln} and box ${BOX_OF[B] + 1}`,
                 level: 4, pattern: [A, B, C, D],
+                story: [
+                  { t: `In ${ln}, ${d} has only two spots: ${cellName(A)} and ${cellName(B)}.`, hi: [A, B] },
+                  { t: `${cellName(B)}'s box holds one more ${d}: ${cellName(C)}.`, hi: [B, C] },
+                  { t: `And ${cellName(C)}'s ${byRow ? 'column' : 'row'} has exactly one other: ${cellName(D)}.`, hi: [C, D] },
+                  { t: `${cellName(A)} or ${cellName(D)} must be ${d} — cells seeing both lose it.`, hi: elim.map(e => e.i) },
+                ],
                 nudge: 'Two-String Kite — three chained strong links: one in a line, one in a box, one in a crossing line. The two loose ends can never both be false.',
                 clue: `Trace ${d} through three strong links: a line pair, a box pair off one end, and a crossing-line pair off that. Eliminate from cells seeing both loose ends.`,
               });
@@ -730,12 +799,17 @@ function scanWWing(vals, cand) {
           `W-Wing: ${cellName(p)} and ${cellName(q)} both hold {${d1},${d2}}, bridged by ${s} in ${houseName(h)}`,
           `Remove ${z} from cells seeing both ${cellName(p)} and ${cellName(q)}`,
           `If ${cellName(p)} is ${s}, the strong ${s} link in ${houseName(h)} forces ${cellName(q)} to ${z} — and vice versa. One of the pair is always ${z}, so cells seeing both lose ${z}.`,
-          {
-            region: [p, q, u, v], regionName: `${cellName(p)}, ${cellName(q)} and the ${s} pair in ${houseName(h)}`,
-            level: 4, pattern: [p, q, u, v],
-            nudge: 'W-Wing — two identical bivalue cells that do not see each other, joined by a strong link on one of their digits. One of the two cells must take the other digit.',
-            clue: `Find two cells with the same two candidates that do not see each other, and a house where one of those digits has exactly two spots — one touching each cell.`,
-          });
+        {
+          region: [p, q, u, v], regionName: `${cellName(p)}, ${cellName(q)} and the ${s} pair in ${houseName(h)}`,
+          level: 4, pattern: [p, q, u, v],
+          story: [
+            { t: `${cellName(p)} and ${cellName(q)} hold the same pair {${d1},${d2}} — and don't see each other.`, hi: [p, q] },
+            { t: `In ${houseName(h)}, ${s} has exactly two spots — ${cellName(u)} and ${cellName(v)} — touching p and q.`, hi: [u, v] },
+            { t: `One of p, q must be ${z} — cells seeing both lose ${z}.`, hi: elim.map(e => e.i) },
+          ],
+          nudge: 'W-Wing — two identical bivalue cells that do not see each other, joined by a strong link on one of their digits. One of the two cells must take the other digit.',
+          clue: `Find two cells with the same two candidates that do not see each other, and a house where one of those digits has exactly two spots — one touching each cell.`,
+        });
       }
     }
   }
@@ -776,12 +850,17 @@ function scanEmptyRectangle(vals, cand) {
               `Empty Rectangle on ${d} in box ${bx + 1} (cross at r${r + 1}c${c + 1}) with strong link ${cellName(A)}–${cellName(D)}`,
               `Remove ${d} from ${cellName(X)}`,
               `In box ${bx + 1}, every ${d} lies on ${lineDesc} or its crossing line. If ${cellName(A)} is not ${d}, its strong link forces ${cellName(D)} = ${d}, and ${cellName(X)} sees it. If ${cellName(A)} is ${d}, the box's ${d} collapses onto the crossing line — and ${cellName(X)} is on it. Either way ${cellName(X)} can't be ${d}.`,
-              {
-                region: cells, regionName: `box ${bx + 1}`,
-                level: 4, pattern: [...cells, A, D],
-                nudge: 'Empty Rectangle — a box where one digit\'s candidates all sit on one row and one column of the box. Joined with a strong link on that row or column, a single far cell gets eliminated.',
-                clue: `In one box, a digit\'s spots all lie on a single row plus a single column (a right angle). Find a two-candidate line on that row or column outside the box.`,
-              });
+            {
+              region: cells, regionName: `box ${bx + 1}`,
+              level: 4, pattern: [...cells, A, D],
+              story: [
+                { t: `In box ${bx + 1}, every ${d} sits on ${lineDesc} or its crossing line.`, hi: cells },
+                { t: `Outside the box, ${cellName(A)} and ${cellName(D)} are the only two ${d}s on their line.`, hi: [A, D] },
+                { t: `Whichever of them is ${d}, ${cellName(X)} gets attacked — remove ${d} there.`, hi: [X] },
+              ],
+              nudge: 'Empty Rectangle — a box where one digit\'s candidates all sit on one row and one column of the box. Joined with a strong link on that row or column, a single far cell gets eliminated.',
+              clue: `In one box, a digit\'s spots all lie on a single row plus a single column (a right angle). Find a two-candidate line on that row or column outside the box.`,
+            });
           }
         }
       }
@@ -839,6 +918,11 @@ function scanColoring(vals, cand) {
             {
               region: comp, regionName: `the ${d} color chain`,
               level: 5, pattern: comp,
+              story: [
+                { t: `Strong links chain ${d} through the grid in two alternating colors.`, hi: comp },
+                { t: `Two same-colored cells see each other — that whole color is impossible.`, hi: cls },
+                { t: `Remove ${d} from every cell of the broken color.`, hi: elim.map(e => e.i) },
+              ],
               nudge: 'Simple Coloring — every digit with exactly two spots per house forms strong links; chain them into two colors. A color that sees itself is entirely false.',
               clue: `Chain the two-spot links on ${d} into alternating colors. Look for one color whose cells attack each other.`,
             });
@@ -854,12 +938,17 @@ function scanColoring(vals, cand) {
             `Simple Colors on ${d}: ${cellName(i)} sees both colors`,
             `Remove ${d} from ${cellName(i)}`,
             `The chain makes one color true and the other false — but ${cellName(i)} sees a cell of each color. Whichever color holds ${d}, ${cellName(i)} is attacked, so it can't be ${d}.`,
-            {
-              region: comp, regionName: `the ${d} color chain`,
-              level: 5, pattern: comp,
-              nudge: 'Simple Coloring — two-color the strong-link chain of a digit; any outside candidate seeing both colors is eliminated.',
-              clue: `Two-color the two-spot links on ${d}. Find a candidate that touches both colors.`,
-            });
+          {
+            region: comp, regionName: `the ${d} color chain`,
+            level: 5, pattern: comp,
+            story: [
+              { t: `Strong links chain ${d} through the grid in two alternating colors.`, hi: comp },
+              { t: `One of the two colors must be true — the other false.`, hi: [classA[0], classB[0]] },
+              { t: `${cellName(i)} sees a cell of each color — whichever wins, it loses ${d}.`, hi: [i] },
+            ],
+            nudge: 'Simple Coloring — two-color the strong-link chain of a digit; any outside candidate seeing both colors is eliminated.',
+            clue: `Two-color the two-spot links on ${d}. Find a candidate that touches both colors.`,
+          });
         }
       }
     }
@@ -990,6 +1079,15 @@ function scanChains(vals, cand) {
           region: nodes.map(n => n.i), regionName: `the ${cls.tech}`,
           level: 5, pattern: [...new Set(nodes.map(n => n.i))],
           chain: { nodes: nodes.map(n => ({ i: n.i, d: n.d })), links },
+          /* one step per hop: the walker advances arrows link by link */
+          story: [
+            { t: `Assume ${cellName(nodes[0].i)} is NOT ${nodes[0].d}.`, hi: [nodes[0].i] },
+            ...nodes.slice(1).map((n, k) => ({
+              t: `${links[k] ? 'Strong link' : 'Weak link'}: ${cellName(nodes[k].i)}=${nodes[k].d} ${links[k] ? '⇒ forces' : '– blocks'} ${cellName(n.i)}=${n.d}.`,
+              hi: [nodes[k].i, n.i],
+            })),
+            { t: `The chain proves ${cellName(nodes[nodes.length - 1].i)} or ${cellName(nodes[0].i)} is ${nodes[0].d} — remove it from cells seeing both.`, hi: elim.map(e => e.i) },
+          ],
           nudge: `${cls.tech} — a chain of alternating strong and weak links. Following it from a false assumption leads to a contradiction unless one specific candidate is true.`,
           clue: `Start from a two-candidate spot and hop: strong link (only two in a house) forces true, weak link (sees it) forces false. Close the loop and eliminate.`,
         });
@@ -1138,6 +1236,10 @@ export function hintsFor(board, solution, notesMasks = null) {
         `Every house must contain 1–9 exactly once. ${cap(houseName(h))} already has every digit except ${d}, and ${cellName(empty)} is its only empty cell.`,
         {
           region: [...h.cells], regionName: houseName(h),
+          story: [
+            { t: `${cap(houseName(h))} is missing exactly one digit.`, hi: [...h.cells] },
+            { t: `${cellName(empty)} is its only empty cell — it takes the missing ${d}.`, hi: [empty] },
+          ],
           nudge: 'Full House — a house with exactly one empty cell. The one missing digit has nowhere else to go.',
           clue: `Look at ${houseName(h)} — one cell is empty. Count which digit is missing.`,
         }));
@@ -1157,6 +1259,10 @@ export function hintsFor(board, solution, notesMasks = null) {
           `Every other cell in ${houseName(h)} is blocked for ${d} by a ${d} in its row or column.`,
           {
             region: [...h.cells], regionName: houseName(h),
+            story: [
+              { t: `Scan ${houseName(h)} for ${d} — where can it still go?`, hi: [...h.cells] },
+              { t: `Every cell but ${cellName(spot)} is blocked — ${d} belongs there.`, hi: [spot] },
+            ],
             nudge: 'Hidden Single — one digit fits in only one cell of a house, because peers block everywhere else.',
             clue: `Scan ${houseName(h)} for a digit that fits in only one spot. ${h.type === 'box' ? 'Check each missing digit against its row and column.' : 'Check each missing digit against the boxes it passes through.'}`,
           }));
@@ -1174,6 +1280,10 @@ export function hintsFor(board, solution, notesMasks = null) {
       `Every other digit already appears in ${cellName(i)}'s row, column, or box — only ${d} can go there.`,
       {
         region: [i, ...PEERS[i]], regionName: `${cellName(i)} and its peers`,
+        story: [
+          { t: `Look at ${cellName(i)} and everything it sees.`, hi: [i, ...PEERS[i]] },
+          { t: `Eight different digits already reach it — only ${d} is left.`, hi: [i] },
+        ],
         nudge: 'Naked Single — a cell whose candidates (all digits not yet in its row, column, or box) leave exactly one option.',
         clue: `Scan the highlighted cells: one of them has a row, column, and box that together contain all eight other digits — it's down to its last candidate.`,
       }));
@@ -1321,6 +1431,10 @@ function trialAndErrorStep(board, solution) {
     `Trying each of ${others.join(', ')} in ${cellName(best)} quickly leads to a contradiction — so ${cellName(best)} = ${d}. Chains and advanced tables would show why; this corner of the puzzle needs them.`,
     {
       region: [best, ...PEERS[best]], regionName: `${cellName(best)} and its peers`,
+      story: [
+        { t: `${cellName(best)} is down to ${[d, ...others].join(' or ')}.`, hi: [best] },
+        { t: `Try each wrong option — every one collapses. ${cellName(best)} = ${d}.`, hi: [best] },
+      ],
       nudge: 'No named pattern fits this position — the digit below is proven by contradiction, not a spotable pattern.',
       clue: `Among the highlighted cells, find the one with the fewest candidates. Test each option — all but one collapse fast.`,
     });

@@ -936,3 +936,17 @@ input[type="range"]::-moz-range-thumb {
   0%, 100% { background: transparent; }
   50% { background: var(--same-soft); }
 }
+
+/* walker text inside the hint float: step counter + one-line explanation */
+.hf-text {
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.25;
+  color: var(--ink);
+  max-width: min(64vw, 300px);
+  padding: 0 6px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}

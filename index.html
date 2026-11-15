@@ -219,8 +219,10 @@
   </div>
 </div>
 
-<!-- Floating hint action pill — appears after "Show me where" dismisses the sheet -->
+<!-- Floating hint action pill — appears after "Show me where" dismisses the
+     sheet; doubles as the board-walkthrough stepper (text + step counter) -->
 <div class="hint-float" id="hintFloat" hidden>
+  <span class="hf-text" id="hintFloatText" hidden></span>
   <button class="hf-btn hf-action" id="hintFloatAction">Place</button>
   <button class="hf-btn hf-close" id="hintFloatClose" aria-label="Dismiss hint">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>

@@ -106,13 +106,20 @@ assert.ok(!registry['sheetHint'].hidden, 'sheet reopened at L4');
 assert.equal((registry['hintDots'].innerHTML.match(/hint-dot on/g) || []).length, 4, 'four dots on at L4');
 assert.match(registry['hintWhere'].textContent, /= \d/, 'L4 reveals cell = digit');
 
-/* L4 action → close, pulse, apply float */
+/* L4 action → board walkthrough: stepper float with a step counter */
 registry['btnHintNext'].onclick();
-assert.ok(registry['sheetHint'].hidden, 'sheet closed after L4 show-me');
-assert.ok(!registry['hintFloat'].hidden, 'apply float visible');
-assert.equal(registry['hintFloatAction'].textContent, 'Place it for me', 'L4 float applies');
+assert.ok(registry['sheetHint'].hidden, 'sheet closed after starting walkthrough');
+assert.ok(!registry['hintFloat'].hidden, 'walk float visible');
+assert.ok(!registry['hintFloatText'].hidden, 'walk text line shown');
+assert.match(registry['hintFloatText'].textContent, /^1\/\d+ /, 'walk shows step counter');
+assert.equal(registry['hintFloatAction'].textContent, 'Next step', 'walk CTA advances');
 
-/* apply → digit placed on board (via internal state; win-check may run) */
+/* step through to the end: the final step offers the apply */
+let guard = 0;
+while (registry['hintFloatAction'].textContent === 'Next step' && guard++ < 12) {
+  registry['hintFloatAction'].onclick();
+}
+assert.equal(registry['hintFloatAction'].textContent, 'Place it for me', 'final walk step applies');
 registry['hintFloatAction'].onclick();
 assert.ok(registry['sheetHint'].hidden, 'sheet closed after apply');
 
