@@ -158,6 +158,35 @@ test('hintsFor: notes suppress only eliminations at cells the player notes', () 
   }
 });
 
+test('hintsFor: technique hints lead to the next placement (fully-noted boards)', () => {
+  /* "Recompute notes" play style: every candidate noted. A stuck player
+   * asks "which digit goes down next?" — every technique hint must show
+   * where its elimination leads, ending in a placement when the pre-chain
+   * ladder can reach one. */
+  let techSteps = 0, withPayoff = 0;
+  for (let k = 0; k < 80; k++) {
+    const rng = mulberry32(99000 + k);
+    const sol = generateSolvedGrid(rng);
+    const puz = dig(sol, 23, rng);
+    const cand = candidatesOf(puz); // full notes everywhere
+    for (const h of hintsFor(puz, sol, cand)) {
+      if ((h.level ?? 0) < 3 || h.tech === 'Trial & Error' || h.tech === 'Mistake') continue;
+      techSteps++;
+      const last = h.next?.[h.next.length - 1];
+      if (last?.placements?.length) {
+        withPayoff++;
+        const p = last.placements[0];
+        assert.equal(p.d, sol[p.i], `${h.tech} trail placed wrong digit at r${ROW_OF[p.i] + 1}c${COL_OF[p.i] + 1}`);
+        for (const t of h.next) {
+          for (const e of t.eliminations ?? []) assert.notEqual(e.d, sol[e.i], `${h.tech} trail eliminated solution digit`);
+        }
+      }
+    }
+  }
+  assert.ok(techSteps >= 40, `expected technique steps, got ${techSteps}`);
+  assert.ok(withPayoff >= techSteps * 0.5, `only ${withPayoff}/${techSteps} technique hints reach a placement`);
+});
+
 test('hintsFor: chain-heavy boards stay within the mobile time budget', () => {
   const boards = deepPuzzles(8, 73000);
   const t0 = Date.now();

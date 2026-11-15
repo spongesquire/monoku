@@ -1195,25 +1195,11 @@ export function hintsFor(board, solution, notesMasks = null) {
     out.length = 0; out.push(...deduped);
   }
 
-  /* chained lookahead for singles: "and then…" — apply the placement,
-   * see what it unlocks (next two singles-level steps). Pedagogically
-   * this teaches players to spot cascades, and it's cheap to compute. */
+  /* chained lookahead for singles: "and then…" — apply the placement and
+   * follow the ladder to the next deduction(s). Pedagogically this teaches
+   * players to spot cascades, and it's cheap to compute. */
   for (const s of out) {
-    const vals2 = vals.slice(), cand2 = cand.slice();
-    for (const p of s.placements) {
-      vals2[p.i] = p.d; cand2[p.i] = 0;
-      for (const j of PEERS[p.i]) cand2[j] &= ~BIT[p.d];
-    }
-    const trail = [];
-    for (let k = 0; k < 2; k++) {
-      const s2 = firstSingleStep(vals2, cand2);
-      if (!s2) break;
-      trail.push(s2);
-      for (const p of s2.placements) {
-        vals2[p.i] = p.d; cand2[p.i] = 0;
-        for (const j of PEERS[p.i]) cand2[j] &= ~BIT[p.d];
-      }
-    }
+    const trail = lookaheadTrail(vals, cand, s);
     if (trail.length) s.next = trail;
   }
 
@@ -1228,6 +1214,10 @@ export function hintsFor(board, solution, notesMasks = null) {
     CHAIN_GUARD = null;
     for (let step of byTier) {
       if (!step) continue;
+      /* payoff trail — a fully-noted player asking "what do I put down
+       * next?" sees where this elimination leads: the next forced digit */
+      const trail = lookaheadTrail(vals, cand, step);
+      if (trail.length) step.next = trail;
       if (notesMasks) {
         const fresh = step.eliminations.filter(e => !alreadyApplied(e.i, e.d));
         if (!fresh.length) continue; // fully applied already — don't re-offer
@@ -1254,15 +1244,6 @@ export function hintsFor(board, solution, notesMasks = null) {
   return out;
 }
 
-/* first singles-level step from this position (used for trail lookahead) */
-function firstSingleStep(vals, cand) {
-  for (let k = 0; k < 4; k++) {
-    const s = LADDER[k](vals, cand);
-    if (s) return s;
-  }
-  return null;
-}
-
 /* first technique BEYOND singles per tier (3 locked/subsets, 4 wings/fish
  * family, 5 coloring/chains) — stops scanning a tier once it has a step */
 function techniqueStepsByTier(vals, cand) {
@@ -1284,6 +1265,36 @@ function firstTechniqueStep(vals, cand) {
     if (s) return s;
   }
   return null;
+}
+
+/* payoff trail: apply a deduction fully, then follow the (chain-free) ladder
+ * until the next PLACEMENT — what a fully-noted player asking "which digit
+ * goes down next?" is waiting for. The chains entry must stay LAST in
+ * LADDER; trails skip it (and its time budget) to stay cheap. */
+function lookaheadTrail(vals, cand, step) {
+  const vals2 = vals.slice(), cand2 = cand.slice();
+  for (const e of step.eliminations) cand2[e.i] &= ~BIT[e.d];
+  for (const p of step.placements ?? []) {
+    vals2[p.i] = p.d; cand2[p.i] = 0;
+    for (const j of PEERS[p.i]) cand2[j] &= ~BIT[p.d];
+  }
+  const trail = [];
+  for (let k = 0; k < 8 && trail.length < 3; k++) {
+    let s = null;
+    for (let idx = 0; idx < LADDER.length - 1; idx++) { // -1: skip chains
+      s = LADDER[idx](vals2, cand2);
+      if (s) break;
+    }
+    if (!s) break; // pre-chain ladder stalls: show what we have
+    trail.push(s);
+    for (const p of s.placements) {
+      vals2[p.i] = p.d; cand2[p.i] = 0;
+      for (const j of PEERS[p.i]) cand2[j] &= ~BIT[p.d];
+    }
+    for (const e of s.eliminations) cand2[e.i] &= ~BIT[e.d];
+    if (s.placements.length) break; // reached the payoff placement
+  }
+  return trail;
 }
 
 /* verified trial-&-error step: for the cell the solution fills "next"
