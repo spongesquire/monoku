@@ -34,6 +34,7 @@ globalThis.document = {
   querySelector: () => new El('q'),
   querySelectorAll: () => [],
   createElement: (t) => new El(t),
+  createElementNS: (_ns, t) => new El(t), // chain arrow overlay SVG
   addEventListener() {},
   documentElement: new El('html'),
   body: new El('body'),

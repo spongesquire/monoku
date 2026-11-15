@@ -11,7 +11,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   grade, hintsFor, generate, generateSolvedGrid, dig, mulberry32,
-  ROW_OF, COL_OF, BOX_OF,
+  candidatesOf, ROW_OF, COL_OF, BOX_OF,
 } from '../js/engine.js';
 
 const sees = (i, j) => ROW_OF[i] === ROW_OF[j] || COL_OF[i] === COL_OF[j] || BOX_OF[i] === BOX_OF[j];
@@ -111,6 +111,51 @@ test('hintsFor: tier-4/5 payload (level/pattern) present and levels sane', () =>
   assert.ok(sawPattern >= 5, `expected pattern payloads, got ${sawPattern}`);
   assert.ok(sawChain >= 1, `expected at least one chain payload via hintsFor, got ${sawChain}`);
   assert.equal(maxLevel, 5, 'tier-5 techniques must surface through hintsFor');
+});
+
+test('hintsFor: no-notes players still get technique hints (regression)', () => {
+  /* notesMasks() encodes "no notes at this cell" as mask 0. That must mean
+   * "not tracking", never "already applied" — otherwise every technique
+   * step is dropped and players only ever see singles + T&E. */
+  let sawTechnique = 0;
+  for (let k = 0; k < 40; k++) {
+    const rng = mulberry32(77000 + k);
+    const sol = generateSolvedGrid(rng);
+    const puz = dig(sol, 24, rng);
+    const noNotes = new Int16Array(81); // all zero: player never uses notes
+    const hints = hintsFor(puz, sol, noNotes);
+    const techs = hints.filter(h => h.level >= 3 && h.tech !== 'Trial & Error' && h.tech !== 'Mistake');
+    if (techs.length) sawTechnique++;
+    for (const h of hints) {
+      for (const p of h.placements ?? []) assert.equal(p.d, sol[p.i], `${h.tech}`);
+      for (const e of h.eliminations ?? []) assert.notEqual(e.d, sol[e.i], `${h.tech}`);
+    }
+  }
+  assert.ok(sawTechnique >= 25, `no-notes boards with technique hints: ${sawTechnique}/40`);
+});
+
+test('hintsFor: notes suppress only eliminations at cells the player notes', () => {
+  for (let k = 0; k < 20; k++) {
+    const rng = mulberry32(88000 + k);
+    const sol = generateSolvedGrid(rng);
+    const puz = dig(sol, 24, rng);
+    const cand = candidatesOf(puz);
+    const full = hintsFor(puz, sol, cand).filter(h => h.level >= 3 && h.tech !== 'Trial & Error');
+    if (!full.length) continue;
+    /* player notes EVERYTHING except one digit at the technique's target:
+     * that one elimination must be filtered; the step itself must survive */
+    const step = full[0];
+    const victim = step.eliminations[0];
+    const masks = Int16Array.from(cand);
+    masks[victim.i] &= ~(1 << (victim.d - 1));
+    const again = hintsFor(puz, sol, masks).filter(h => h.tech === step.tech);
+    assert.ok(again.length >= 1, `${step.tech} vanished entirely after one noted cell`);
+    if (step.eliminations.length > 1) {
+      assert.ok(again.some(h => !h.eliminations.some(e => e.i === victim.i && e.d === victim.d)),
+        `${step.tech} re-offered the already-applied elimination`);
+    }
+    break; // one deep check is enough; coverage of the filter is structural
+  }
 });
 
 test('hintsFor: chain-heavy boards stay within the mobile time budget', () => {

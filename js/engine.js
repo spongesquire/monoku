@@ -1116,10 +1116,11 @@ export function hintsFor(board, solution, notesMasks = null) {
 
   const vals = board.slice();
   const cand = candidatesOf(vals);
-  /* Notes are used ONLY to filter, never to derive: an elimination the
-   * player already applied (it's gone from their notes) must not re-offer.
-   * Deriving FROM notes would let incomplete notes fabricate false hints. */
-  const notesHave = (i, d) => (notesMasks ? (notesMasks[i] & BIT[d]) !== 0 : true);
+  /* Notes are used ONLY to filter, never to derive — but ONLY at cells the
+   * player actually maintains. A cell with no notes (mask 0) means "not
+   * tracking", NOT "already eliminated": treating it as applied dropped
+   * every technique step for no-notes players, leaving them singles + T&E. */
+  const alreadyApplied = (i, d) => (notesMasks ? notesMasks[i] !== 0 && (notesMasks[i] & BIT[d]) === 0 : false);
 
   /* 2. all simultaneous singles: full houses, hidden singles, naked singles.
    *    Each is independently true right now — a fresh, different hint per tap. */
@@ -1228,7 +1229,7 @@ export function hintsFor(board, solution, notesMasks = null) {
     for (let step of byTier) {
       if (!step) continue;
       if (notesMasks) {
-        const fresh = step.eliminations.filter(e => notesHave(e.i, e.d));
+        const fresh = step.eliminations.filter(e => !alreadyApplied(e.i, e.d));
         if (!fresh.length) continue; // fully applied already — don't re-offer
         if (fresh.length < step.eliminations.length) step.eliminations = fresh;
       }

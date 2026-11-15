@@ -589,7 +589,10 @@ function showHintSheet(step, idx, total, fp) {
   } else if (lvl === 1) {
     const { band, tone } = techBand(step.weight);
     title = 'Where to start';
-    body = `The easiest move available right now is **${band.toLowerCase()}** difficulty.`;
+    /* always anchor level 1 to this board: name the area the move lives in,
+     * so the first tap already says something specific (Hintoku-style) */
+    body = `The easiest move available right now is **${band.toLowerCase()}** difficulty`
+      + (step.regionName ? ` — start around the ${step.regionName}` : '') + '.';
     teach = step.nudge
       ? `${step.nudge}`
       : 'Look for a house or cell that is nearly complete.';
